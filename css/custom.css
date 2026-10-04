@@ -1,0 +1,618 @@
+body {
+  background-color: #151c24;
+  font-family: "Titillium Web", sans-serif;
+}
+
+.bg-default {
+  background-color: #151c24;
+}
+
+#partCategoriesContainer {
+  width: 100%;
+}
+/* 151c24
+#212830 
+border 3c434d
+*/
+
+.accordion-button.collapsed::after {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-button:not(.collapsed)::after {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-button.collapsed {
+  background-color: #151c24;
+}
+
+.accordion-button:not(.collapsed) {
+  background-color: #151c24;
+}
+
+.bg-grey {
+  background-color: #151c24;
+}
+
+.accordion-collapse {
+  background-color: #151c24;
+}
+
+.outline-light {
+  border: 0.5px solid white !important;
+}
+
+.bg-none {
+  background-color: rgba(0, 0, 0, 0) !important;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+.itemNameContainer {
+  display: flex;
+  justify-content: center;
+}
+
+.itemNameContainer > p {
+  margin-bottom: 0rem !important;
+}
+
+.stratagemImage {
+  height: 3rem;
+}
+
+#motImage {
+  width: 25%;
+}
+
+.itemCards {
+  background-color: #212830;
+  width: 100%;
+  cursor: pointer;
+}
+
+.soItemCards {
+  background-color: #212830;
+  padding: 0rem;
+}
+
+.pcItemCards {
+  background-color: #212830;
+  padding: 0rem;
+}
+
+.pcItemCards > div {
+  text-align: center;
+}
+
+.pcItemCards:hover {
+  transform: scale(1.2);
+  transition: transform 0.3s ease;
+  z-index: 1;
+  border: 1px solid yellow;
+}
+
+.armorLabCards {
+  background-color: #212830;
+}
+
+.pcNoHoverItemCards {
+  background-color: #212830;
+  padding: 0rem;
+}
+
+.pcNoHoverItemCards > div {
+  text-align: center;
+}
+
+.specialistCards {
+  cursor: pointer;
+  background-color: #212830;
+}
+
+.tgSpecialistCards:hover,
+.challengeCards:hover,
+.pcNoHoverItemCards:hover,
+.itemCards:hover,
+.specialistCards:hover {
+  border: 1px solid yellow;
+}
+
+.tgSpecialistCards {
+  background-color: #212830;
+}
+
+.pcModalItemCards {
+  cursor: pointer;
+}
+
+.pcItemCardText {
+  font-size: 0.75rem;
+}
+
+@media only screen and (max-width: 767px) {
+  #bbMissionFailedText,
+  #bbMissionCompleteText,
+  #bbLoadoutText,
+  #bbShopText,
+  #bbTypeText,
+  #bbPriceText,
+  #bbResetText,
+  #bbSearchText,
+  #superCreditsText,
+  #warbondSelectButtonDesktop,
+  .responsiveText {
+    display: none;
+  }
+
+  #bbMissionFailedIcon,
+  #bbMissionCompleteIcon,
+  #bbLoadoutIcon,
+  #bbShopIcon,
+  #bbTypeIcon,
+  #bbPriceIcon,
+  #bbResetIcon,
+  #bbSearchIcon,
+  #superCreditsIcon,
+  #warbondSelectButtonMobile,
+  .responsiveIcon {
+    display: block;
+  }
+
+  #bbShopFilterDiv {
+    justify-content: end;
+  }
+}
+
+@media only screen and (min-width: 768px) {
+  #bbMissionFailedText,
+  #bbMissionCompleteText,
+  #bbLoadoutText,
+  #bbShopText,
+  #bbTypeText,
+  #bbPriceText,
+  #bbResetText,
+  #bbSearchText,
+  #superCreditsText,
+  #warbondSelectButtonDesktop,
+  .responsiveText {
+    display: block;
+  }
+
+  #bbMissionFailedIcon,
+  #bbMissionCompleteIcon,
+  #bbLoadoutIcon,
+  #bbShopIcon,
+  #bbTypeIcon,
+  #bbPriceIcon,
+  #bbResetIcon,
+  #bbSearchIcon,
+  #superCreditsIcon,
+  #warbondSelectButtonMobile,
+  .responsiveIcon {
+    display: none;
+  }
+
+  #bbShopFilterDiv {
+    justify-content: center;
+  }
+}
+
+@media only screen and (max-width: 650px) {
+  #stratText {
+    display: none;
+  }
+  #allRandomText {
+    display: none;
+  }
+  #equipText {
+    display: none;
+  }
+  #optionsText {
+    display: none;
+  }
+  #armorButtonText {
+    display: none;
+  }
+  .armorSizeLogo {
+    font-size: 2rem;
+  }
+  #armorButtonIcon {
+    display: block;
+  }
+  #stratIcon {
+    display: block;
+  }
+  #allRandomIcon {
+    display: block;
+  }
+  #equipIcon {
+    display: block;
+  }
+  #optionsIcon {
+    display: block;
+  }
+}
+
+@media only screen and (min-width: 651px) {
+  #stratText {
+    display: block;
+  }
+  #allRandomText {
+    display: block;
+  }
+  #equipText {
+    display: block;
+  }
+  #optionsText {
+    display: block;
+  }
+  #armorButtonText {
+    display: block;
+  }
+  .armorSizeLogo {
+    font-size: 4rem;
+  }
+  #armorButtonIcon {
+    display: none;
+  }
+  #stratIcon {
+    display: none;
+  }
+  #allRandomIcon {
+    display: none;
+  }
+  #equipIcon {
+    display: none;
+  }
+  #optionsIcon {
+    display: none;
+  }
+}
+
+@media only screen and (max-width: 445px) {
+  #changeLogDateText {
+    display: none;
+  }
+}
+
+#armorContainer {
+  color: white;
+}
+
+.armorLogo {
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.shuffle-icon {
+  transform: rotateY(180deg);
+}
+
+.itemOptionsModalHeaders {
+  display: block !important;
+}
+
+.acquiredItemsAccordionItem {
+  height: 250px;
+  overflow-y: overlay;
+  overflow-x: hidden;
+  scrollbar-color: #fff #212830;
+  background-color: #151c24;
+}
+
+#downloadPDFButtonDiv {
+  display: none;
+}
+
+.costBadges {
+  font-size: 0.9rem !important;
+  top: 5%;
+  left: 90%;
+  position: absolute;
+}
+
+#bbShopItemsContainer {
+  overflow-y: auto;
+  max-height: 70vh;
+  min-height: 20vh;
+  display: flex;
+  justify-content: center;
+}
+
+.bbItemCards {
+  cursor: pointer;
+  position: relative;
+  margin: 0.25rem !important;
+}
+
+.no-caret::after {
+  display: none !important;
+}
+
+#stratagemsContainerBB,
+#equipmentContainerBB {
+  border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.emptyItemContainers {
+  text-align: center;
+  margin: 0.5rem;
+  border: 1px solid yellow;
+  padding: 0rem;
+}
+
+.challengeCards {
+  text-decoration: none;
+  color: inherit;
+  border: none;
+  display: flex;
+  align-items: center;
+}
+
+@keyframes colorCycle {
+  0% {
+    color: red;
+  }
+  33% {
+    color: cyan;
+  }
+  66% {
+    color: green;
+  }
+  100% {
+    color: red;
+  }
+}
+
+.color-changer {
+  animation: colorCycle 5s infinite;
+}
+
+.scrollablePlanetList {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scrollableWarbondsList {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scrollableTierColorsList {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+#soSavedGameOptionDiv {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.pcMandatoryStratagemClass {
+  border: 2px solid cyan;
+}
+
+@media only screen and (max-width: 767px) {
+  .socialIcons {
+    font-size: x-large;
+  }
+}
+
+@media only screen and (min-width: 768px) {
+  .socialIcons {
+    font-size: x-large;
+  }
+}
+
+.pointer-events-none {
+  pointer-events: none;
+}
+
+.pointer-events-auto {
+  pointer-events: auto;
+}
+
+#tierListContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tier {
+  display: flex;
+  align-items: center;
+  background: #151c24;
+  padding: 5px;
+  border: 2px solid #3c434d;
+  min-height: 60px;
+}
+
+.tierLabelButton {
+  width: 50px;
+  margin-right: 5px;
+  text-align: center;
+  background-color: #151c24 !important;
+}
+
+.tierLabel {
+  width: 50px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.tierSubLabel {
+  font-size: x-small;
+}
+
+.tierCategories {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  min-height: 40px;
+  border-left: 2px dashed #3c434d;
+  padding-left: 5px;
+}
+
+.tierItem {
+  cursor: grab;
+  user-select: none;
+  width: 80px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+#tierButtonPreview {
+  background-color: #151c24 !important;
+}
+
+#looseItemsContainer {
+  margin-top: 2px;
+  background: #151c24;
+  padding: 2px;
+  border: 2px solid #3c434d;
+}
+
+.addTierButtonDivs {
+  display: flex;
+  flex-direction: column;
+}
+
+.addTierButtons {
+  padding: 3px;
+}
+
+.webpIconStyles {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+}
+
+@media (min-width: 992px) {
+  .modal.right-modal .modal-dialog {
+    position: fixed;
+    right: 0;
+    margin: 0;
+    height: 100%;
+    /* max-width: 400px; or whatever width you prefer */
+  }
+
+  .modal.right-modal .modal-content {
+    height: 100%;
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0;
+  }
+
+  .svgIconStyles {
+    width: 150px;
+  }
+}
+
+@media (max-width: 768px) {
+  .svgIconStyles {
+    width: 80px;
+  }
+
+  .webpIconStyles {
+    width: 80px;
+    height: 80px;
+  }
+}
+
+@media only screen and (min-width: 769px) {
+  .svgIconStyles {
+    width: 120px;
+  }
+
+  .webpIconStyles {
+    width: 120px;
+    height: 120px;
+  }
+}
+
+.cursorPointer {
+  cursor: pointer;
+}
+
+.mediumFontSize {
+  font-size: medium;
+}
+
+.rmUnlockedItem {
+  background-color: #212830;
+  cursor: pointer;
+}
+
+.rmUnlockedItem:hover {
+  transform: scale(1.2);
+  transition: transform 0.3s ease;
+  z-index: 1;
+  border: 1px solid yellow;
+}
+
+.rmLockedItem {
+  background-color: #212830;
+  opacity: 35%;
+}
+
+.rerollButton {
+  width: 50%;
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  display: none;
+  z-index: 2;
+  padding: 0px 0px;
+  border-radius: 100%;
+}
+
+.rerollButton:hover {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.8));
+}
+
+.itemCards:hover .rerollButton {
+  display: block;
+}
+
+@media (hover: none) and (pointer: coarse), (max-width: 768px) {
+  .rerollButton {
+    display: block !important;
+  }
+}
+
+#helmetCard {
+  clip-path: inset(1px 25px 12px 22px);
+}
+
+#armorImg {
+  object-fit: cover;
+  object-position: center -40px;
+  height: 100%;
+  width: 100%;
+  padding-top: 4rem;
+}
+
+.showAllAccordionItemsModalButtons::after {
+  display: none !important;
+}
+
+/* Squad (4-player) mode */
+.playerBlock {
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  margin-top: 0.5rem;
+}
+
+.playerBlock:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+
+.playerHeader {
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}

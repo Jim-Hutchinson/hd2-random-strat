@@ -1,0 +1,72 @@
+const warbondsChecklistContainer = document.getElementById(
+  "warbondsChecklistContainer",
+);
+const warbondsList = [
+  "Super Citizen Edition", // warbond0
+  "Superstore", // warbond1
+  "Pre-Order Bonus", // warbond2
+  "Helldivers Mobilize", // warbond3
+  "Steeled Veterans", // warbond4
+  "Cutting Edge", // warbond5
+  "Democratic Detonation", // warbond6
+  "Polar Patriots", // warbond7
+  "Viper Commandos", // warbond8
+  "Freedom's Flame", // warbond9
+  "Chemical Agents", // warbond10
+  "Truth Enforcers", // warbond11
+  "Urban Legends", // warbond12
+  "Servants of Freedom", // warbond13
+  "Borderline Justice", // warbond14
+  "Masters of Ceremony", // warbond15
+  "Force of Law", // warbond16
+  "Control Group", // warbond17
+  "KILLZONE", // warbond18
+  "Halo ODST", //warbond19
+  "Dust Devils", //warbond20
+  "Python Commandos", //warbond21
+  "Redacted Regiment", //warbond22
+  "Siege Breakers", //warbond23
+  "Entrenched Division", //warbond24
+  "Exo Experts", //warbond25
+  "Warhammer 40k", //warbond26
+  "Ironclad Democracy", //warbond27
+];
+
+const genWarbondCheckboxes = () => {
+  warbondsChecklistContainer.innerHTML = `
+    <h5 class="text-white d-flex justify-content-center">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="toggleAllWarbonds" />
+        <label class="form-check-label" for="toggleAllWarbonds">
+          <div>Warbond Select</div>
+        </label>
+      </div>
+    </h5>
+  `;
+
+  for (let i = 0; i < warbondsList.length; i++) {
+    warbondsChecklistContainer.innerHTML += `                                    
+          <div class="form-check">
+            <input
+                class="form-check-input warbondCheckboxes"
+                type="checkbox"
+                value=""
+                id="warbond${i}"
+                checked
+            />
+            <label
+                class="form-check-label"
+                for="warbond${i}"
+            >
+                <div>
+                    <b class="text-white"
+                        >${warbondsList[i]}</b
+                    >
+                </div>
+            </label>
+          </div>
+      `;
+  }
+};
+
+genWarbondCheckboxes();
