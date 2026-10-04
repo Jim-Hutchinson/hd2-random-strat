@@ -80,8 +80,21 @@ const getArmorContainerElements = () =>
       (Number(a.dataset.player) || 0) - (Number(b.dataset.player) || 0),
   );
 
-// Roll armor - main function (rolls one armor per player)
-const rollArmor = async () => {
+// A player's armor pool for the given roll type (respects per-player
+// warbond exclusions in squad mode). Returns null when the type uses a
+// global list (armor sizes) or when per-player pools are unavailable.
+const getArmorListForPlayer = (playerIndex, armorType) => {
+  if (typeof getPlayerWorkingLists !== "function") return null;
+  const lists = getPlayerWorkingLists(playerIndex);
+  if (!lists) return null;
+  if (armorType === ARMOR_TYPES.SET) return lists.armorSets;
+  if (armorType === ARMOR_TYPES.PASSIVE) return lists.armorPassives;
+  return null; // armor sizes are not warbond-filtered
+};
+
+// Roll armor - main function (rolls one armor per player; pass a playerIndex
+// to re-roll only that player)
+const rollArmor = async (playerIndex = null) => {
   if (typeof proTipCounter !== "undefined") {
     proTipCounter += 1;
     if (proTipCounter === 3 && typeof rollProTip === "function") {
@@ -89,7 +102,11 @@ const rollArmor = async () => {
     }
   }
 
-  const containers = getArmorContainerElements();
+  const containers = getArmorContainerElements().filter(
+    (container) =>
+      playerIndex == null ||
+      (Number(container.dataset.player) || 0) === playerIndex,
+  );
   if (!containers.length) return;
 
   const activeArmorType = getSelectedArmorRollType();
@@ -108,9 +125,24 @@ const rollArmor = async () => {
   }
 
   for (const container of containers) {
+    // Per-player warbond exclusions may shrink this player's armor pool
+    let list = activeArmorType.list;
+    const idx = Number(container.dataset.player) || 0;
+    const playerList = getArmorListForPlayer(idx, activeArmorType.type);
+    if (playerList) list = playerList;
+
+    if (!list?.length) {
+      container.innerHTML = `
+        <div class="col-12 text-center text-white">
+          <p>No armor options available with current filters</p>
+        </div>
+      `;
+      continue;
+    }
+
     // Roll random armor item
-    const randomIndex = Math.floor(Math.random() * activeArmorType.list.length);
-    const rolledArmor = activeArmorType.list[randomIndex];
+    const randomIndex = Math.floor(Math.random() * list.length);
+    const rolledArmor = list[randomIndex];
 
     if (!rolledArmor) {
       console.error("Failed to roll armor - no item selected");
@@ -172,6 +204,13 @@ const rerollArmor = async (intName, category, sourceElement) => {
   const activeArmorType = getSelectedArmorRollType();
   if (!activeArmorType || !activeArmorType.list?.length) return;
 
+  // Respect this player's warbond exclusions in squad mode
+  const playerIndex = Number(armorContainer.dataset.player) || 0;
+  let armorList = activeArmorType.list;
+  const playerList = getArmorListForPlayer(playerIndex, activeArmorType.type);
+  if (playerList) armorList = playerList;
+  if (!armorList?.length) return;
+
   // Get current armor to avoid rerolling same item (optional)
   let newArmor = null;
   let attempts = 0;
@@ -181,8 +220,8 @@ const rerollArmor = async (intName, category, sourceElement) => {
     (!newArmor || newArmor.internalName === intName) &&
     attempts < maxAttempts
   ) {
-    const randomIndex = Math.floor(Math.random() * activeArmorType.list.length);
-    newArmor = activeArmorType.list[randomIndex];
+    const randomIndex = Math.floor(Math.random() * armorList.length);
+    newArmor = armorList[randomIndex];
     attempts++;
   }
 

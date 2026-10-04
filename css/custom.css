@@ -619,4 +619,14 @@ border 3c434d
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
+  cursor: pointer;
+}
+
+.playerHeader:hover {
+  color: #ffc107;
+}
+
+.playerHeader .bi-arrow-repeat {
+  font-size: 0.85em;
+  opacity: 0.7;
 }

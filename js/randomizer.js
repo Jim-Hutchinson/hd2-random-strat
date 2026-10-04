@@ -54,6 +54,8 @@ let rolledStrats = [];
 let proTipCounter = 0;
 let checkedWarbonds = new Set(); // Use Set for better performance
 let teamMode = false;
+// Per-player warbond selections (squad mode only; one Set per player)
+let playerWarbonds = [null, null, null, null];
 
 // Helper: Get current checkbox states
 const getSupplyOptions = () => ({
@@ -82,6 +84,157 @@ const updatePerPlayerOptionsAvailability = () => {
     const el = document.getElementById(id);
     if (el) el.disabled = !teamMode;
   });
+
+  const squadWarbondsContainer = document.getElementById(
+    "squadWarbondsContainer",
+  );
+  if (squadWarbondsContainer) {
+    squadWarbondsContainer.style.display = teamMode ? "" : "none";
+    if (teamMode) {
+      initPlayerWarbonds();
+      buildSquadWarbondUI();
+    }
+  }
+};
+
+// Per-player item pools: in squad mode every player can exclude warbonds
+// separately; in solo mode everyone shares the global list.
+const getPlayerWorkingLists = (playerIndex) => {
+  if (!teamMode || !playerWarbonds[playerIndex]) {
+    return workingLists;
+  }
+  const set = playerWarbonds[playerIndex];
+  const byWarbond = (list) =>
+    list.filter(
+      (item) => set.has(item.warbondCode) || item.warbondCode === "none",
+    );
+  return {
+    prims: byWarbond([...PRIMARIES]),
+    seconds: byWarbond([...SECONDARIES]),
+    throws: byWarbond([...THROWABLES]),
+    boosts: byWarbond([...BOOSTERS]),
+    strats: byWarbond([...STRATAGEMS]),
+    armorPassives: byWarbond([...ARMOR_PASSIVES]),
+    armorSets: byWarbond([...ARMOR_SETS]),
+  };
+};
+
+// --- Per-player warbond selections -----------------------------------------
+
+// Give every player the global selection as their starting point
+const initPlayerWarbonds = () => {
+  PLAYER_NAMES.forEach((_, playerIndex) => {
+    if (!playerWarbonds[playerIndex]) {
+      playerWarbonds[playerIndex] = new Set(checkedWarbonds);
+    }
+  });
+};
+
+const loadSquadWarbondOptions = (options) => {
+  // Default: everyone starts with the global warbond selection
+  PLAYER_NAMES.forEach((_, playerIndex) => {
+    playerWarbonds[playerIndex] = new Set(checkedWarbonds);
+  });
+
+  const stored = options?.squadWarbondOptions;
+  if (stored) {
+    PLAYER_NAMES.forEach((_, playerIndex) => {
+      const playerStorage = stored[`p${playerIndex}`];
+      if (playerStorage) {
+        playerWarbonds[playerIndex] = new Set(
+          Object.keys(playerStorage).filter((code) => playerStorage[code]),
+        );
+      }
+    });
+  }
+};
+
+const saveSquadWarbondOptions = () => {
+  const randomizerOptions = JSON.parse(
+    localStorage.getItem("randomizerOptions") || "{}",
+  );
+  const stored = {};
+  playerWarbonds.forEach((set, playerIndex) => {
+    stored[`p${playerIndex}`] = Object.fromEntries(
+      [...set].map((code) => [code, true]),
+    );
+  });
+  randomizerOptions.squadWarbondOptions = stored;
+  localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
+};
+
+// Build the per-player warbond checklists shown in the Options modal
+const buildSquadWarbondUI = () => {
+  const container = document.getElementById("squadWarbondsContainer");
+  if (!container || typeof warbondsList === "undefined") return;
+
+  const checklists = PLAYER_NAMES.map(
+    (name, playerIndex) => `
+    <div class="accordion-item bg-grey">
+      <h2 class="accordion-header" id="squadWarbondsHeading${playerIndex}">
+        <button
+          class="accordion-button collapsed text-light"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#squadWarbondsPanel${playerIndex}"
+          aria-expanded="false"
+          aria-controls="squadWarbondsPanel${playerIndex}"
+        >
+          ${name}
+        </button>
+      </h2>
+      <div
+        id="squadWarbondsPanel${playerIndex}"
+        class="accordion-collapse collapse"
+        aria-labelledby="squadWarbondsHeading${playerIndex}"
+        data-bs-parent="#squadWarbondsAccordion"
+      >
+        <div class="accordion-body">
+          ${warbondsList
+            .map((warbondName, warbondIndex) => {
+              const id = `warbond${warbondIndex}-player${playerIndex}`;
+              const code = `warbond${warbondIndex}`;
+              const checked = playerWarbonds[playerIndex]?.has(code)
+                ? "checked"
+                : "";
+              return `
+              <div class="form-check">
+                <input
+                  class="form-check-input squadWarbondCheckbox"
+                  type="checkbox"
+                  id="${id}"
+                  data-player="${playerIndex}"
+                  data-warbond="${code}"
+                  ${checked}
+                />
+                <label class="form-check-label text-white" for="${id}">
+                  ${warbondName}
+                </label>
+              </div>`;
+            })
+            .join("")}
+        </div>
+      </div>
+    </div>`,
+  ).join("");
+
+  container.innerHTML = `
+    <h5 class="text-white mt-3">Squad Warbonds (per player)</h5>
+    <p class="text-white-50 small mb-2">
+      Each Helldiver can roll from their own set of warbonds. Ticking a box in
+      the shared checklist above updates every player at once.
+    </p>
+    <div class="accordion" id="squadWarbondsAccordion">${checklists}</div>
+  `;
+};
+
+// The shared checklist acts as "apply to all players" while in squad mode
+const syncSquadWarbondsFromGlobal = () => {
+  PLAYER_NAMES.forEach((_, playerIndex) => {
+    playerWarbonds[playerIndex] = new Set(checkedWarbonds);
+  });
+  saveSquadWarbondOptions();
+  buildSquadWarbondUI();
 };
 
 // Tag helper functions
@@ -142,7 +295,14 @@ const buildLoadoutDOM = () => {
         ${PLAYER_NAMES.map(
           (name, playerIndex) => `
         <div class="playerBlock col-12 col-lg-6">
-          <h5 class="text-white text-center playerHeader my-2">${name}</h5>
+          <h5
+            class="text-white text-center playerHeader my-2"
+            onclick="rerollPlayer(${playerIndex})"
+            title="Re-roll this player's loadout"
+          >
+            ${name}
+            <i class="bi bi-arrow-repeat ms-1"></i>
+          </h5>
           <div
             class="armorContainer d-flex row justify-content-start"
             data-player="${playerIndex}"
@@ -223,6 +383,30 @@ const initEventListeners = () => {
   Array.from(elements.warbondCheckboxes).forEach((cb) => {
     cb.addEventListener("change", handleWarbondChange);
   });
+
+  // Per-player warbond checkboxes (squad mode)
+  const squadWarbondsContainer = document.getElementById(
+    "squadWarbondsContainer",
+  );
+  if (squadWarbondsContainer) {
+    squadWarbondsContainer.addEventListener("change", (e) => {
+      const checkbox = e.target.closest(".squadWarbondCheckbox");
+      if (!checkbox) return;
+      const playerIndex = Number(checkbox.dataset.player);
+      const warbondCode = checkbox.dataset.warbond;
+      const set =
+        playerWarbonds[playerIndex] ||
+        (playerWarbonds[playerIndex] = new Set());
+      if (checkbox.checked) {
+        set.add(warbondCode);
+      } else {
+        set.delete(warbondCode);
+      }
+      saveSquadWarbondOptions();
+      // Re-roll just that player with their new pool
+      rerollPlayer(playerIndex);
+    });
+  }
 
   // Add toggle all warbonds functionality
   const toggleAllButton = document.getElementById("toggleAllWarbonds");
@@ -324,7 +508,7 @@ const updateToggleAllButton = () => {
 };
 
 // Handle toggle all warbonds
-const handleToggleAllWarbonds = (e) => {
+const handleToggleAllWarbonds = async (e) => {
   const isChecked = e.target.checked;
   const allWarbondCheckboxes = document.querySelectorAll(".warbondCheckboxes");
 
@@ -345,7 +529,12 @@ const handleToggleAllWarbonds = (e) => {
   });
 
   // Filter all items after toggling
-  filterItemsByWarbond();
+  await filterItemsByWarbond();
+
+  // In squad mode the shared toggle applies to every player
+  if (teamMode) {
+    syncSquadWarbondsFromGlobal();
+  }
 
   // Re-roll everything to reflect new warbond selection
   rollEquipment();
@@ -354,7 +543,7 @@ const handleToggleAllWarbonds = (e) => {
 };
 
 // Handle warbond changes
-const handleWarbondChange = (e) => {
+const handleWarbondChange = async (e) => {
   updateLocalStorage(e.target, "warbondOptions");
 
   if (e.target.checked) {
@@ -364,7 +553,15 @@ const handleWarbondChange = (e) => {
   }
 
   updateToggleAllButton(); // Update the toggle button state
-  filterItemsByWarbond();
+  await filterItemsByWarbond();
+
+  // In squad mode the shared checklist applies to every player
+  if (teamMode) {
+    syncSquadWarbondsFromGlobal();
+    rollEquipment();
+    rollStratagems();
+    if (typeof rollArmor === "function") rollArmor();
+  }
 };
 
 // Filter items by warbond (optimized)
@@ -392,9 +589,9 @@ const filterItemsByWarbond = async () => {
   }
 };
 
-// Filter stratagem list based on radio options
-const filterStratList = async () => {
-  let filteredList = [...workingLists.strats];
+// Filter a stratagem list based on the radio options (Eagles/Orbitals/etc.)
+const filterStratList = async (baseList = null) => {
+  let filteredList = [...(baseList ?? workingLists.strats)];
 
   const onlyRadios = [
     { radio: document.getElementById("onlyDefenseRadio"), category: "Defense" },
@@ -433,6 +630,10 @@ const filterStratList = async () => {
 
   return filteredList;
 };
+
+// A player's stratagem pool: their warbond selection plus the shared radio options
+const filterStratListForPlayer = async (playerIndex) =>
+  filterStratList(getPlayerWorkingLists(playerIndex).strats);
 
 // Get random unique numbers with supply constraints (solo mode - one player)
 const getRandomUniqueNumbers = (list, options, amt) => {
@@ -523,79 +724,31 @@ const getRandomUniqueNumbers = (list, options, amt) => {
   return numbers;
 };
 
-// Squad mode: roll stratagems for the whole team with team-wide constraints
-const rollTeamStratagems = (list, options) => {
+// Squad mode: roll stratagems for the whole team with team-wide constraints.
+// Each player draws from their own pool (their warbond selection + the shared
+// radio options), so the fill happens player by player against shared team
+// counters.
+const rollTeamStratagems = (pools, options) => {
   const total = TEAM_SIZE * 4; // 4 stratagem slots per player
 
-  const supports = list.filter(isSupportItem);
-  const backpacks = list.filter(isBackpackItem);
-
-  // "Always" rules guarantee one of each across the whole team
-  const requiredSupports = options.alwaysSupport ? TEAM_SIZE : 0;
-  const requiredBackpacks = options.alwaysBackpack ? TEAM_SIZE : 0;
-
-  const used = new Set();
-  const picks = [];
-
-  const takeFrom = (pool, amount) => {
-    const available = shuffleArray(
-      pool.filter((item) => !used.has(item.internalName)),
-    );
-    available.slice(0, amount).forEach((item) => {
-      used.add(item.internalName);
-      picks.push(item);
-    });
-  };
-
-  // Backpack-carried support weapons (Autocannon, Recoilless, ...) carry both
-  // tags, which would muddy the "one support"/"one backpack" counts. Prefer
-  // single-tag items for the guaranteed picks whenever enough are available.
-  const pureSupports = supports.filter((item) => !isBackpackItem(item));
-  const pureBackpacks = backpacks.filter((item) => !isSupportItem(item));
-
-  takeFrom(
-    pureSupports.length >= requiredSupports ? pureSupports : supports,
-    requiredSupports,
-  );
-  takeFrom(
-    pureBackpacks.length >= requiredBackpacks ? pureBackpacks : backpacks,
-    requiredBackpacks,
-  );
-
-  if (picks.length < requiredSupports + requiredBackpacks) {
-    console.warn(
-      "Squad randomizer: not enough support/backpack stratagems available to cover the whole team",
-    );
-  }
-
-  // Caps for the remaining fills. "Always" rules take priority over "only one"
-  // rules, and the team-wide "only one" rule beats the per-player one (it is
-  // strictly stricter).
+  // Team-wide caps. "Always" rules take priority over "only one" rules, and
+  // the team-wide "only one" rule beats the per-player one (it is stricter).
   const maxSupports = options.alwaysSupport
-    ? Math.min(requiredSupports, supports.length)
+    ? TEAM_SIZE
     : options.oneSupport
       ? 1
       : options.oneSupportPerPlayer
         ? TEAM_SIZE
         : total;
   const maxBackpacks = options.alwaysBackpack
-    ? Math.min(requiredBackpacks, backpacks.length)
+    ? TEAM_SIZE
     : options.oneBackpack
       ? 1
       : options.oneBackpackPerPlayer
         ? TEAM_SIZE
         : total;
 
-  // Fill the remaining slots with random stratagems that respect the team-wide caps
-  const baseCounts = {
-    s: picks.filter(isSupportItem).length,
-    b: picks.filter(isBackpackItem).length,
-    e: picks.filter(isExosuitItem).length,
-    f: picks.filter(isFrvItem).length,
-  };
-  const baseNames = new Set(picks.map((item) => item.internalName));
-
-  // Try progressively looser rule sets so a tiny filtered pool can still fill
+  // Try progressively looser rule sets so tiny per-player pools can still fill
   // the squad. Support/backpack counts are relaxed last - the vehicle caps and
   // then uniqueness give way first.
   const fillTiers = [
@@ -605,118 +758,138 @@ const rollTeamStratagems = (list, options) => {
     { unique: false, respectCaps: false, respectVehicleCaps: false },
   ];
 
-  let filler = [];
+  let result = null;
   for (const tier of fillTiers) {
     for (let attempt = 0; attempt < 200; attempt++) {
-      const pool = tier.unique
-        ? shuffleArray(list.filter((item) => !baseNames.has(item.internalName)))
-        : shuffleArray(list);
-
-      const local = [];
-      let s = baseCounts.s;
-      let b = baseCounts.b;
-      let e = baseCounts.e;
-      let f = baseCounts.f;
-
-      for (const item of pool) {
-        if (picks.length + local.length >= total) break;
-
-        if (isSupportItem(item)) {
-          if (tier.respectCaps && s >= maxSupports) continue;
-          s++;
-        }
-        if (isBackpackItem(item)) {
-          if (tier.respectCaps && b >= maxBackpacks) continue;
-          b++;
-        }
-        if (isExosuitItem(item)) {
-          if (tier.respectVehicleCaps && e >= 1) continue;
-          e++;
-        }
-        if (isFrvItem(item)) {
-          if (tier.respectVehicleCaps && f >= 1) continue;
-          f++;
-        }
-
-        local.push(item);
-      }
-
-      // Last resort: top up with random repeats so nobody is left with an
-      // empty slot when the filtered pool is smaller than the squad needs.
-      let guard = 0;
-      while (
-        !tier.unique &&
-        picks.length + local.length < total &&
-        guard < 500
-      ) {
-        guard++;
-        local.push(list[Math.floor(Math.random() * list.length)]);
-      }
-
-      if (picks.length + local.length >= total) {
-        filler = local;
-        break;
-      }
+      result = tryFillTeam(pools, options, tier, maxSupports, maxBackpacks);
+      if (result) break;
     }
-    if (filler.length) break;
+    if (result) break;
   }
 
-  if (!filler.length) {
+  if (!result) {
     console.warn("Squad randomizer: could not fill all stratagem slots");
+    // Last resort: everyone gets four random stratagems from their own pool.
+    result = pools.map((pool) => {
+      const picks = [];
+      for (let i = 0; i < 4 && pool.length; i++) {
+        picks.push(pool[Math.floor(Math.random() * pool.length)]);
+      }
+      return picks;
+    });
   }
 
-  picks.push(...filler);
+  return result;
+};
 
-  // Deal the stratagems out: supports go out first so they spread across the
-  // squad, and every item goes to an eligible player with the fewest picks so
-  // each player always ends up with exactly four stratagems. When a
-  // per-player "only one" rule is active, players who already have that
-  // category are skipped while dealing.
+// One attempt at filling all four players. Returns per-player pick arrays, or
+// null when some player could not be filled under the current tier's rules.
+const tryFillTeam = (pools, options, tier, maxSupports, maxBackpacks) => {
+  const used = new Set();
   const perPlayer = [[], [], [], []];
-  const playerSupports = [0, 0, 0, 0];
-  const playerBackpacks = [0, 0, 0, 0];
-  const perPlayerSupportCap = options.oneSupportPerPlayer ? 1 : TEAM_SIZE;
-  const perPlayerBackpackCap = options.oneBackpackPerPlayer ? 1 : TEAM_SIZE;
+  const team = { s: 0, b: 0, e: 0, f: 0 };
+  const supportCapPerPlayer =
+    tier.respectCaps && options.oneSupportPerPlayer ? 1 : TEAM_SIZE;
+  const backpackCapPerPlayer =
+    tier.respectCaps && options.oneBackpackPerPlayer ? 1 : TEAM_SIZE;
 
-  const placeItem = (item) => {
-    // Rule eligibility first, then balance by fewest picks, so per-player
-    // "only one" caps are respected without piling items onto one player.
-    let candidates = perPlayer.map((_, index) => index);
-
-    if (isSupportItem(item)) {
-      const eligible = candidates.filter(
-        (index) => playerSupports[index] < perPlayerSupportCap,
-      );
-      if (eligible.length) candidates = eligible;
-    }
-    if (isBackpackItem(item)) {
-      const eligible = candidates.filter(
-        (index) => playerBackpacks[index] < perPlayerBackpackCap,
-      );
-      if (eligible.length) candidates = eligible;
-    }
-
-    const minLength = Math.min(
-      ...candidates.map((index) => perPlayer[index].length),
-    );
-    const shortest = candidates.filter(
-      (index) => perPlayer[index].length === minLength,
-    );
-    const target = shortest[Math.floor(Math.random() * shortest.length)];
-    perPlayer[target].push(item);
-    if (isSupportItem(item)) playerSupports[target] += 1;
-    if (isBackpackItem(item)) playerBackpacks[target] += 1;
+  const acceptItem = (playerIndex, item) => {
+    perPlayer[playerIndex].push(item);
+    if (tier.unique) used.add(item.internalName);
+    if (isSupportItem(item)) team.s += 1;
+    if (isBackpackItem(item)) team.b += 1;
+    if (isExosuitItem(item)) team.e += 1;
+    if (isFrvItem(item)) team.f += 1;
   };
 
-  [
-    ...shuffleArray(picks.filter(isSupportItem)),
-    ...shuffleArray(
-      picks.filter((item) => isBackpackItem(item) && !isSupportItem(item)),
-    ),
-    ...shuffleArray(
-      picks.filter((item) => !isSupportItem(item) && !isBackpackItem(item)),
-    ),
-  ].forEach(placeItem);
+  // 1. Guaranteed picks: with "always" rules every player gets one of each
+  // required category (dual-tagged items such as the Autocannon count for
+  // both, and single-tag items are preferred when both rules are active).
+  for (let playerIndex = 0; playerIndex < TEAM_SIZE; playerIndex++) {
+    const pool = pools[playerIndex];
+
+    if (options.alwaysSupport) {
+      const available = pool.filter(
+        (item) =>
+          !used.has(item.internalName) &&
+          isSupportItem(item) &&
+          (!tier.respectCaps || team.s < maxSupports),
+      );
+      if (available.length) {
+        const candidates = options.alwaysBackpack
+          ? available.filter((item) => !isBackpackItem(item))
+          : available;
+        const chosenList = candidates.length ? candidates : available;
+        acceptItem(
+          playerIndex,
+          chosenList[Math.floor(Math.random() * chosenList.length)],
+        );
+      }
+    }
+
+    if (
+      options.alwaysBackpack &&
+      !perPlayer[playerIndex].some(isBackpackItem)
+    ) {
+      const available = pool.filter(
+        (item) =>
+          !used.has(item.internalName) &&
+          isBackpackItem(item) &&
+          (!tier.respectCaps || team.b < maxBackpacks),
+      );
+      if (available.length) {
+        // Prefer single-tag backpacks so the support count stays exact when
+        // both "always" rules are active
+        const candidates = options.alwaysSupport
+          ? available.filter((item) => !isSupportItem(item))
+          : available;
+        const chosenList = candidates.length ? candidates : available;
+        acceptItem(
+          playerIndex,
+          chosenList[Math.floor(Math.random() * chosenList.length)],
+        );
+      }
+    }
+  }
+
+  // 2. Fill every player's remaining slots from their own pool
+  for (let playerIndex = 0; playerIndex < TEAM_SIZE; playerIndex++) {
+    const picks = perPlayer[playerIndex];
+    let playerSupports = picks.filter(isSupportItem).length;
+    let playerBackpacks = picks.filter(isBackpackItem).length;
+
+    for (const item of shuffleArray(pools[playerIndex])) {
+      if (picks.length >= 4) break;
+      if (tier.unique && used.has(item.internalName)) continue;
+
+      if (
+        isSupportItem(item) &&
+        tier.respectCaps &&
+        (team.s >= maxSupports || playerSupports >= supportCapPerPlayer)
+      ) {
+        continue;
+      }
+      if (
+        isBackpackItem(item) &&
+        tier.respectCaps &&
+        (team.b >= maxBackpacks || playerBackpacks >= backpackCapPerPlayer)
+      ) {
+        continue;
+      }
+      if (isExosuitItem(item) && tier.respectVehicleCaps && team.e >= 1) {
+        continue;
+      }
+      if (isFrvItem(item) && tier.respectVehicleCaps && team.f >= 1) {
+        continue;
+      }
+
+      acceptItem(playerIndex, item);
+      if (isSupportItem(item)) playerSupports += 1;
+      if (isBackpackItem(item)) playerBackpacks += 1;
+    }
+
+    if (picks.length < 4) return null; // this attempt failed
+  }
 
   return perPlayer;
 };
@@ -761,13 +934,19 @@ const rollStratagems = async () => {
   if (proTipCounter === 3) rollProTip();
 
   const options = getSupplyOptions();
-  const filteredList = await filterStratList();
   const containers = getStratContainers();
 
   let playerPicks;
   if (teamMode) {
-    playerPicks = rollTeamStratagems(filteredList, options);
+    // Every player rolls from their own pool (per-player warbonds + shared
+    // radio options) against the team-wide constraints.
+    const pools = [];
+    for (let playerIndex = 0; playerIndex < containers.length; playerIndex++) {
+      pools.push(await filterStratListForPlayer(playerIndex));
+    }
+    playerPicks = rollTeamStratagems(pools, options);
   } else {
+    const filteredList = await filterStratList();
     playerPicks = containers.map(() =>
       getRandomUniqueNumbers(filteredList, options, 4).map(
         (index) => filteredList[index],
@@ -786,46 +965,51 @@ const rollStratagems = async () => {
   });
 };
 
+// Roll one player's equipment from their own pool.
+// usedBoosters tracks boosters already taken by other squad members.
+const rollEquipmentForPlayer = (container, playerIndex, usedBoosters) => {
+  const equipmentCategories = ["prims", "seconds", "throws", "boosts"];
+  const lists = getPlayerWorkingLists(playerIndex);
+  container.innerHTML = "";
+
+  equipmentCategories.forEach((category) => {
+    let list = lists[category];
+
+    if (teamMode && category === "boosts") {
+      const unused = list.filter(
+        (item) => !usedBoosters.has(item.internalName),
+      );
+      if (unused.length) {
+        list = unused;
+      } else {
+        console.warn(
+          "Squad randomizer: not enough unique boosters, allowing duplicates",
+        );
+      }
+    }
+
+    if (!list?.length) {
+      container.innerHTML += `<div class="col-3 d-flex justify-content-center"><div class="card itemCards"></div></div>`;
+      return;
+    }
+
+    const randomIndex = Math.floor(Math.random() * list.length);
+    const item = list[randomIndex];
+    if (category === "boosts") usedBoosters.add(item.internalName);
+
+    container.innerHTML += equipmentCardHTML(item);
+  });
+};
+
 // Roll equipment
 const rollEquipment = () => {
   proTipCounter++;
   if (proTipCounter === 3) rollProTip();
 
-  const equipmentCategories = ["prims", "seconds", "throws", "boosts"];
-  const containers = getEquipmentContainers();
   // Boosters are unique across the team (matching the in-game rule)
   const usedBoosters = new Set();
-
-  containers.forEach((container) => {
-    container.innerHTML = "";
-
-    equipmentCategories.forEach((category) => {
-      let list = workingLists[category];
-
-      if (teamMode && category === "boosts") {
-        const unused = list.filter(
-          (item) => !usedBoosters.has(item.internalName),
-        );
-        if (unused.length) {
-          list = unused;
-        } else {
-          console.warn(
-            "Squad randomizer: not enough unique boosters, allowing duplicates",
-          );
-        }
-      }
-
-      if (!list?.length) {
-        container.innerHTML += `<div class="col-3 d-flex justify-content-center"><div class="card itemCards"></div></div>`;
-        return;
-      }
-
-      const randomIndex = Math.floor(Math.random() * list.length);
-      const item = list[randomIndex];
-      if (category === "boosts") usedBoosters.add(item.internalName);
-
-      container.innerHTML += equipmentCardHTML(item);
-    });
+  getEquipmentContainers().forEach((container, playerIndex) => {
+    rollEquipmentForPlayer(container, playerIndex, usedBoosters);
   });
 };
 
@@ -844,7 +1028,6 @@ const updateCardWithItem = (card, item, imagePath) => {
 // Reroll a single stratagem card (team-aware)
 const rerollStratItem = async (internalName) => {
   const options = getSupplyOptions();
-  const filteredList = await filterStratList();
 
   // Collect every stratagem card, player by player, in roll order
   const allStratCards = getStratContainers().flatMap((container) =>
@@ -857,6 +1040,10 @@ const rerollStratItem = async (internalName) => {
       card.dataset.category === "strat",
   );
   if (!clickedCard) return;
+
+  // The clicked card's player owns the pool this reroll draws from
+  const playerIndex = Number(clickedCard.dataset.player) || 0;
+  const filteredList = await filterStratListForPlayer(playerIndex);
 
   const currentPosition = allStratCards.indexOf(clickedCard);
 
@@ -974,16 +1161,18 @@ const rerollEquipmentItem = (internalName, category) => {
     booster: "boosts",
   };
 
-  const listKey = categoryMap[category];
-  const list = workingLists[listKey];
-  if (!list?.length) return;
-
   const clickedCard = document.querySelector(
     `.card[data-internal-name="${internalName}"][data-category="${category}"]`,
   );
   if (!clickedCard) return;
 
   const playerContainer = clickedCard.closest(".equipmentContainer");
+  if (!playerContainer) return;
+
+  const playerIndex = Number(playerContainer.dataset.player) || 0;
+  const listKey = categoryMap[category];
+  const list = getPlayerWorkingLists(playerIndex)[listKey];
+  if (!list?.length) return;
 
   // Remove current item to avoid rolling the same one
   let availableItems = list.filter((item) => item.internalName !== internalName);
@@ -1039,6 +1228,108 @@ const rerollItem = async (internalName, category) => {
 
 // Make rerollItem available globally
 window.rerollItem = rerollItem;
+
+// Re-roll one player's whole loadout (squad mode). The other players keep
+// their rolls, and all team-wide rules still hold.
+const rerollPlayer = async (playerIndex) => {
+  if (!teamMode) return;
+  const options = getSupplyOptions();
+  const stratContainers = getStratContainers();
+  const equipContainers = getEquipmentContainers();
+  const targetStratContainer = stratContainers[playerIndex];
+  if (!targetStratContainer) return;
+
+  // Everything currently held by the OTHER players
+  const otherItems = [];
+  stratContainers.forEach((container, index) => {
+    if (index === playerIndex) return;
+    container.querySelectorAll(".card.itemCards").forEach((card) => {
+      const item = STRATAGEMS.find(
+        (s) => s.internalName === card.dataset.internalName,
+      );
+      if (item) otherItems.push(item);
+    });
+  });
+  const usedNames = new Set(otherItems.map((item) => item.internalName));
+  const remainingSupports = otherItems.filter(isSupportItem).length;
+  const remainingBackpacks = otherItems.filter(isBackpackItem).length;
+  const remainingExosuits = otherItems.filter(isExosuitItem).length;
+  const remainingFRVs = otherItems.filter(isFrvItem).length;
+
+  // Translate the team rules into constraints for this single player
+  const effectiveOptions = {
+    oneSupport: false,
+    oneBackpack: false,
+    alwaysSupport: false,
+    alwaysBackpack: false,
+  };
+  let pool = (await filterStratListForPlayer(playerIndex)).filter(
+    (item) => !usedNames.has(item.internalName),
+  );
+
+  if (options.alwaysSupport) {
+    // They are one of the four Helldivers, so they bring exactly one support
+    effectiveOptions.alwaysSupport = true;
+    effectiveOptions.oneSupport = true;
+  } else if (options.oneSupport || options.oneSupportPerPlayer) {
+    effectiveOptions.oneSupport = true;
+    if (options.oneSupport && remainingSupports >= 1) {
+      // The team-wide cap is already used up by someone else
+      pool = pool.filter((item) => !isSupportItem(item));
+    }
+  }
+
+  if (options.alwaysBackpack) {
+    effectiveOptions.alwaysBackpack = true;
+    effectiveOptions.oneBackpack = true;
+  } else if (options.oneBackpack || options.oneBackpackPerPlayer) {
+    effectiveOptions.oneBackpack = true;
+    if (options.oneBackpack && remainingBackpacks >= 1) {
+      pool = pool.filter((item) => !isBackpackItem(item));
+    }
+  }
+
+  if (remainingExosuits >= 1) {
+    pool = pool.filter((item) => !isExosuitItem(item));
+  }
+  if (remainingFRVs >= 1) {
+    pool = pool.filter((item) => !isFrvItem(item));
+  }
+
+  const indices = getRandomUniqueNumbers(pool, effectiveOptions, 4);
+  const picks = indices.map((index) => pool[index]).filter(Boolean);
+
+  targetStratContainer.innerHTML = "";
+  picks.forEach((stratagem, position) => {
+    if (rolledStrats[playerIndex * 4 + position] !== undefined) {
+      rolledStrats[playerIndex * 4 + position] = stratagem.internalName;
+    }
+    targetStratContainer.innerHTML += stratCardHTML(
+      stratagem,
+      playerIndex,
+      position,
+    );
+  });
+
+  // Equipment, keeping boosters unique across the squad
+  const usedBoosters = new Set();
+  equipContainers.forEach((container, index) => {
+    if (index === playerIndex) return;
+    container
+      .querySelectorAll('.card[data-category="booster"]')
+      .forEach((card) => {
+        if (card.dataset.internalName) {
+          usedBoosters.add(card.dataset.internalName);
+        }
+      });
+  });
+  rollEquipmentForPlayer(equipContainers[playerIndex], playerIndex, usedBoosters);
+
+  if (typeof rollArmor === "function") rollArmor(playerIndex);
+};
+
+// Make rerollPlayer available globally (used by the player header clicks)
+window.rerollPlayer = rerollPlayer;
 
 // Local storage management
 const updateLocalStorage = (element, type) => {
@@ -1109,7 +1400,6 @@ const applyStoredOptionsToLists = async (options) => {
   // Apply squad mode (rebuild the loadout DOM for the right number of players)
   teamMode = !!elements.teamModeCheck?.checked;
   buildLoadoutDOM();
-  updatePerPlayerOptionsAvailability();
 
   // Rebuild checkedWarbonds set
   checkedWarbonds.clear();
@@ -1117,8 +1407,12 @@ const applyStoredOptionsToLists = async (options) => {
     if (cb.checked) checkedWarbonds.add(cb.id);
   });
 
+  // Per-player warbond selections (defaults to the global selection)
+  loadSquadWarbondOptions(options);
+
   updateToggleAllButton(); // Update the toggle button state after loading
   await filterItemsByWarbond();
+  updatePerPlayerOptionsAvailability();
   updateRadioButtonsState();
 };
 
