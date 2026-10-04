@@ -56,12 +56,10 @@ let checkedWarbonds = new Set(); // Use Set for better performance
 let teamMode = false;
 // Per-player warbond selections (squad mode only; one Set per player)
 let playerWarbonds = [null, null, null, null];
-// Advanced settings mode: hides power-user options unless enabled
-let advancedMode = false;
-// Per-player squad roles (squad mode only): null or a key of ROLES
-let playerRoles = [null, null, null, null];
 // Locked slots: Map<"strat:p:pos" | "equip:p:category" | "armor:p", internalName>
 const lockedSlots = new Map();
+// Selected pre-made loadout kit (index into PREMADE_LOADOUTS, or null = any)
+let premadeIndex = null;
 
 // Helper: Get current checkbox states
 const getSupplyOptions = () => ({
@@ -81,40 +79,12 @@ const getSupplyOptions = () => ({
   alwaysBackpack:
     elements.alwaysBackpackCheck.checked &&
     !elements.alwaysBackpackCheck.disabled,
-  uniqueEquipment:
-    teamMode &&
-    document.getElementById("uniqueEquipmentCheck")?.checked &&
-    !document.getElementById("uniqueEquipmentCheck")?.disabled,
 });
-
-// Show/hide the power-user options (presets, seed, roles, unique equipment)
-// depending on the "Advanced settings" toggle.
-const updateAdvancedVisibility = () => {
-  advancedMode = !!document.getElementById("advancedSettingsCheck")?.checked;
-
-  ["presetBlock", "seedBlock"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = advancedMode ? "" : "none";
-  });
-
-  const uniqueEquipmentCheck = document.getElementById("uniqueEquipmentCheck");
-  if (uniqueEquipmentCheck) {
-    uniqueEquipmentCheck.closest(".form-check").style.display = advancedMode
-      ? ""
-      : "none";
-  }
-
-  document
-    .querySelectorAll("#loadoutSlots .roleSelect")
-    .forEach((select) => {
-      select.style.display = advancedMode ? "" : "none";
-    });
-};
 
 // The per-player "only one" options only apply in squad mode, so they are
 // disabled while rolling for a single player.
 const updatePerPlayerOptionsAvailability = () => {
-  ["oneSupportPerPlayerCheck", "oneBackpackPerPlayerCheck", "uniqueEquipmentCheck"].forEach((id) => {
+  ["oneSupportPerPlayerCheck", "oneBackpackPerPlayerCheck"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = !teamMode;
   });
@@ -132,25 +102,69 @@ const updatePerPlayerOptionsAvailability = () => {
 };
 
 // Per-player item pools: in squad mode every player can exclude warbonds
-// separately; in solo mode everyone shares the global list.
+// separately; in solo mode everyone shares the global list. A selected
+// pre-made loadout shrinks every category it covers to that kit's items.
 const getPlayerWorkingLists = (playerIndex) => {
-  if (!teamMode || !playerWarbonds[playerIndex]) {
-    return workingLists;
-  }
-  const set = playerWarbonds[playerIndex];
-  const byWarbond = (list) =>
-    list.filter(
-      (item) => set.has(item.warbondCode) || item.warbondCode === "none",
-    );
-  return {
-    prims: byWarbond([...PRIMARIES]),
-    seconds: byWarbond([...SECONDARIES]),
-    throws: byWarbond([...THROWABLES]),
-    boosts: byWarbond([...BOOSTERS]),
-    strats: byWarbond([...STRATAGEMS]),
-    armorPassives: byWarbond([...ARMOR_PASSIVES]),
-    armorSets: byWarbond([...ARMOR_SETS]),
+  const raw = {
+    prims: [...PRIMARIES],
+    seconds: [...SECONDARIES],
+    throws: [...THROWABLES],
+    boosts: [...BOOSTERS],
+    strats: [...STRATAGEMS],
+    armorPassives: [...ARMOR_PASSIVES],
+    armorSets: [...ARMOR_SETS],
   };
+
+  let lists;
+  if (teamMode && playerWarbonds[playerIndex]) {
+    const set = playerWarbonds[playerIndex];
+    const byWarbond = (list) =>
+      list.filter(
+        (item) => set.has(item.warbondCode) || item.warbondCode === "none",
+      );
+    lists = {};
+    Object.keys(raw).forEach((key) => {
+      lists[key] = byWarbond(raw[key]);
+    });
+  } else {
+    lists = workingLists;
+  }
+
+  // Pre-made loadout: keep only the kit's items. If that leaves a category
+  // empty (its item is excluded by a warbond filter, say), the kit wins and
+  // its item is used as-is.
+  if (premadeIndex != null && PREMADE_LOADOUTS[premadeIndex]) {
+    const kitItems = PREMADE_LOADOUTS[premadeIndex].items || {};
+    Object.keys(raw).forEach((key) => {
+      const allowed = new Set(kitItems[key] || []);
+      if (!allowed.size) return; // the kit does not touch this category
+      const filtered = lists[key].filter((item) =>
+        allowed.has(item.internalName),
+      );
+      lists[key] = filtered.length
+        ? filtered
+        : raw[key].filter((item) => allowed.has(item.internalName));
+    });
+  }
+
+  return lists;
+};
+
+// --- Pre-made loadouts ------------------------------------------------------
+
+const applyPremadeSelection = () => {
+  const value = document.getElementById("premadeSelect")?.value ?? "";
+  premadeIndex = value === "" ? null : Number(value);
+};
+
+const savePremadeSelection = () => {
+  const randomizerOptions = JSON.parse(
+    localStorage.getItem("randomizerOptions") || "{}",
+  );
+  randomizerOptions.premadeOptions = {
+    premadeSelect: premadeIndex == null ? "" : String(premadeIndex),
+  };
+  localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
 };
 
 // --- Per-player warbond selections -----------------------------------------
@@ -277,266 +291,12 @@ const isBackpackItem = (item) => item?.tags?.includes(TAG_BACKPACK);
 const isExosuitItem = (item) => item?.tags?.includes("exosuit");
 const isFrvItem = (item) => item?.tags?.includes("frv");
 
-// Squad roles: each role guarantees the player draws a matching stratagem
-const ROLES = {
-  support: { label: "Support", matches: (item) => isSupportItem(item) },
-  at: { label: "Anti-Tank", matches: (item) => item.antitank === true },
-  crowd: {
-    label: "Crowd Control",
-    matches: (item) =>
-      ["gas", "smoke", "stun"].some((tag) => item.tags?.includes(tag)),
-  },
-  eagle: { label: "Eagle", matches: (item) => item.category === "Eagle" },
-  orbital: { label: "Orbital", matches: (item) => item.category === "Orbital" },
-};
-
-const setPlayerRole = (playerIndex, role) => {
-  playerRoles[playerIndex] = role || null;
-
-  const randomizerOptions = JSON.parse(
-    localStorage.getItem("randomizerOptions") || "{}",
-  );
-  const stored = randomizerOptions.playerOptions || {};
-  stored[`p${playerIndex}`] = playerRoles[playerIndex] || "";
-  randomizerOptions.playerOptions = stored;
-  localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
-
-  // Re-roll that player so the role requirement takes effect
-  rerollPlayer(playerIndex);
-};
-window.setPlayerRole = setPlayerRole;
-
-// --- Difficulty presets -----------------------------------------------------
-
-const DEFAULT_STRATAGEM_OPTIONS = {
-  onlyEaglesRadio: false,
-  noEaglesRadio: false,
-  defaultEaglesRadio: true,
-  onlyOrbitalsRadio: false,
-  noOrbitalsRadio: false,
-  defaultOrbitalsRadio: true,
-  onlyDefenseRadio: false,
-  noDefenseRadio: false,
-  defaultDefenseRadio: true,
-  onlySupplyRadio: false,
-  noSupplyRadio: false,
-  defaultSupplyRadio: true,
-};
-
-const DIFFICULTY_PRESETS = [
-  {
-    name: "Standard (defaults)",
-    stratagemOptions: { ...DEFAULT_STRATAGEM_OPTIONS },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "Balanced Squad (one support + one backpack each)",
-    stratagemOptions: { ...DEFAULT_STRATAGEM_OPTIONS },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: true,
-      alwaysBackpackCheck: true,
-    },
-  },
-  {
-    name: "Strict Squad (one support & one backpack TOTAL)",
-    stratagemOptions: { ...DEFAULT_STRATAGEM_OPTIONS },
-    supplyAmountOptions: {
-      oneSupportCheck: true,
-      oneBackpackCheck: true,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "Self-Sufficient (max one support & backpack per player)",
-    stratagemOptions: { ...DEFAULT_STRATAGEM_OPTIONS },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: true,
-      oneBackpackPerPlayerCheck: true,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "Eagle Strike (only Eagles)",
-    stratagemOptions: {
-      ...DEFAULT_STRATAGEM_OPTIONS,
-      onlyEaglesRadio: true,
-      defaultEaglesRadio: false,
-    },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "Orbital Supremacy (only Orbitals)",
-    stratagemOptions: {
-      ...DEFAULT_STRATAGEM_OPTIONS,
-      onlyOrbitalsRadio: true,
-      defaultOrbitalsRadio: false,
-    },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "Home Defense (only Defense)",
-    stratagemOptions: {
-      ...DEFAULT_STRATAGEM_OPTIONS,
-      onlyDefenseRadio: true,
-      defaultDefenseRadio: false,
-    },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-  {
-    name: "No Logistics (no Supply stratagems)",
-    stratagemOptions: {
-      ...DEFAULT_STRATAGEM_OPTIONS,
-      noSupplyRadio: true,
-      defaultSupplyRadio: false,
-    },
-    supplyAmountOptions: {
-      oneSupportCheck: false,
-      oneBackpackCheck: false,
-      oneSupportPerPlayerCheck: false,
-      oneBackpackPerPlayerCheck: false,
-      alwaysSupportCheck: false,
-      alwaysBackpackCheck: false,
-    },
-  },
-];
-
-const applyPreset = async () => {
-  const select = document.getElementById("presetSelect");
-  const preset = DIFFICULTY_PRESETS[Number(select?.value)];
-  if (!preset) return;
-
-  const randomizerOptions = JSON.parse(
-    localStorage.getItem("randomizerOptions") || "{}",
-  );
-
-  [
-    ["stratagemOptions", preset.stratagemOptions],
-    ["supplyAmountOptions", preset.supplyAmountOptions],
-  ].forEach(([category, values]) => {
-    if (!values) return;
-    randomizerOptions[category] = values;
-    Object.entries(values).forEach(([id, checked]) => {
-      const element = document.getElementById(id);
-      if (element) element.checked = checked;
-    });
-  });
-  localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
-
-  updateRadioButtonsState();
-  await filterItemsByWarbond();
-  rollEquipment();
-  rollStratagems();
-  if (typeof rollArmor === "function") rollArmor();
-};
-window.applyPreset = applyPreset;
-
-// --- Seeds ------------------------------------------------------------------
-
-const applySeedFromInput = () => {
-  const value = document.getElementById("seedInput")?.value || "";
-  setSeed(value);
-
-  const randomizerOptions = JSON.parse(
-    localStorage.getItem("randomizerOptions") || "{}",
-  );
-  randomizerOptions.seedOptions = { seedInput: value };
-  localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
-};
-
-// Same seed + same options + same warbonds = the same rolls for everyone
-const rollChallengeOfTheDay = () => {
-  const today = new Date();
-  const seed = `cotd-${today.getFullYear()}-${String(
-    today.getMonth() + 1,
-  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-  const input = document.getElementById("seedInput");
-  if (input) input.value = seed;
-  applySeedFromInput();
-
-  const modal = window.bootstrap?.Modal
-    ? bootstrap.Modal.getInstance(document.getElementById("optionsModal"))
-    : null;
-  modal?.hide();
-
-  randomizeAll();
-};
-
-// --- Seeded randomness -----------------------------------------------------
-// All rolls go through random(). With no seed set it is plain Math.random();
-// with a seed (e.g. the "Challenge of the Day" date) it is a deterministic
-// mulberry32 PRNG, so the same seed + same options reproduces the same rolls.
-let seededRandom = null;
-
-const hashSeedString = (text) => {
-  let h = 1779033703 ^ text.length;
-  for (let i = 0; i < text.length; i++) {
-    h = Math.imul(h ^ text.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  h = Math.imul(h ^ (h >>> 16), 2246822507);
-  h = Math.imul(h ^ (h >>> 13), 3266489909);
-  return (h ^= h >>> 16) >>> 0;
-};
-
-const mulberry32 = (a) => () => {
-  a |= 0;
-  a = (a + 0x6d2b79f5) | 0;
-  let t = Math.imul(a ^ (a >>> 15), 1 | a);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
-
-const setSeed = (seedText) => {
-  const trimmed = (seedText || "").trim();
-  seededRandom = trimmed ? mulberry32(hashSeedString(trimmed)) : null;
-};
-
-const random = () => (seededRandom ? seededRandom() : Math.random());
 
 // Helper: Shuffle a copy of an array (Fisher-Yates)
 const shuffleArray = (array) => {
   const copy = [...array];
   for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
+    const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
@@ -584,32 +344,14 @@ const buildLoadoutDOM = () => {
         ${PLAYER_NAMES.map(
           (name, playerIndex) => `
         <div class="playerBlock col-12 col-lg-6">
-          <div class="d-flex justify-content-center align-items-center gap-2">
-            <h5
-              class="text-white text-center playerHeader my-2"
-              onclick="rerollPlayer(${playerIndex})"
-              title="Re-roll this player's loadout"
-            >
-              ${name}
-              <i class="bi bi-arrow-repeat ms-1"></i>
-            </h5>
-            <select
-              class="form-select form-select-sm w-auto roleSelect"
-              data-player="${playerIndex}"
-              onchange="setPlayerRole(${playerIndex}, this.value)"
-              title="Assign a squad role"
-            >
-              <option value="">No role</option>
-              ${Object.entries(ROLES)
-                .map(
-                  ([key, role]) =>
-                    `<option value="${key}" ${
-                      playerRoles[playerIndex] === key ? "selected" : ""
-                    }>${role.label}</option>`,
-                )
-                .join("")}
-            </select>
-          </div>
+          <h5
+            class="text-white text-center playerHeader my-2"
+            onclick="rerollPlayer(${playerIndex})"
+            title="Re-roll this player's loadout"
+          >
+            ${name}
+            <i class="bi bi-arrow-repeat ms-1"></i>
+          </h5>
           <div
             class="armorContainer d-flex row justify-content-start"
             data-player="${playerIndex}"
@@ -629,9 +371,7 @@ const buildLoadoutDOM = () => {
     `;
   }
 
-  updateAdvancedVisibility();
 
-  // Give the loadout column more room in squad mode
   const column = document.getElementById("loadoutColumn");
   if (column) {
     column.classList.toggle("col-lg-5", !teamMode);
@@ -723,45 +463,21 @@ const initEventListeners = () => {
     toggleAllButton.addEventListener("change", handleToggleAllWarbonds);
   }
 
-  // Advanced settings toggle
-  const advancedSettingsCheck = document.getElementById(
-    "advancedSettingsCheck",
-  );
-  if (advancedSettingsCheck) {
-    advancedSettingsCheck.addEventListener("change", (e) => {
-      updateLocalStorage(e.target, "advancedOptions");
-      updateAdvancedVisibility();
+  // Pre-made loadout selection
+  const premadeSelect = document.getElementById("premadeSelect");
+  if (premadeSelect) {
+    premadeSelect.innerHTML =
+      '<option value="">Any (fully random)</option>' +
+      PREMADE_LOADOUTS.map(
+        (kit, index) => `<option value="${index}">${kit.name}</option>`,
+      ).join("");
+    premadeSelect.addEventListener("change", () => {
+      applyPremadeSelection();
+      savePremadeSelection();
+      rollEquipment();
+      rollStratagems();
+      if (typeof rollArmor === "function") rollArmor();
     });
-  }
-
-  // Seed controls
-  const seedInput = document.getElementById("seedInput");
-  if (seedInput) {
-    seedInput.addEventListener("change", applySeedFromInput);
-  }
-  const clearSeedButton = document.getElementById("clearSeedButton");
-  if (clearSeedButton) {
-    clearSeedButton.addEventListener("click", () => {
-      const input = document.getElementById("seedInput");
-      if (input) input.value = "";
-      applySeedFromInput();
-    });
-  }
-  const cotdButton = document.getElementById("cotdButton");
-  if (cotdButton) {
-    cotdButton.addEventListener("click", rollChallengeOfTheDay);
-  }
-
-  // Presets
-  const presetSelect = document.getElementById("presetSelect");
-  if (presetSelect) {
-    presetSelect.innerHTML = DIFFICULTY_PRESETS.map((preset, index) =>
-      `<option value="${index}">${preset.name}</option>`,
-    ).join("");
-  }
-  const applyPresetButton = document.getElementById("applyPresetButton");
-  if (applyPresetButton) {
-    applyPresetButton.addEventListener("click", applyPreset);
   }
 
   // Reroll via click delegation on the loadout slots (works for every player)
@@ -1017,7 +733,7 @@ const getRandomUniqueNumbers = (list, options, amt) => {
 
   while (numbers.length < amt && attempts < maxAttempts) {
     attempts++;
-    const randomNumber = Math.floor(random() * list.length);
+    const randomNumber = Math.floor(Math.random() * list.length);
     const item = list[randomNumber];
     const tags = item.tags || [];
     const isSupport = tags.includes(TAG_SUPPORT);
@@ -1135,7 +851,7 @@ const rollTeamStratagems = (pools, options, lockedByPlayer) => {
     result = pools.map((pool) => {
       const picks = [];
       for (let i = 0; i < 4 && pool.length; i++) {
-        picks.push(pool[Math.floor(random() * pool.length)]);
+        picks.push(pool[Math.floor(Math.random() * pool.length)]);
       }
       return picks;
     });
@@ -1211,7 +927,7 @@ const tryFillTeam = (
         const chosenList = candidates.length ? candidates : available;
         acceptItem(
           playerIndex,
-          chosenList[Math.floor(random() * chosenList.length)],
+          chosenList[Math.floor(Math.random() * chosenList.length)],
         );
       }
     }
@@ -1236,41 +952,11 @@ const tryFillTeam = (
         const chosenList = candidates.length ? candidates : available;
         acceptItem(
           playerIndex,
-          chosenList[Math.floor(random() * chosenList.length)],
+          chosenList[Math.floor(Math.random() * chosenList.length)],
         );
       }
     }
 
-    // Role requirement: this player must draw a stratagem matching their role
-    const role = ROLES[playerRoles[playerIndex]];
-    if (role && !perPlayer[playerIndex].some(role.matches)) {
-      const picks = perPlayer[playerIndex];
-      const playerSupports = picks.filter(isSupportItem).length;
-      const playerBackpacks = picks.filter(isBackpackItem).length;
-      const available = pool.filter((item) => {
-        if (used.has(item.internalName) || !role.matches(item)) return false;
-        if (!tier.respectCaps) return true;
-        if (
-          isSupportItem(item) &&
-          (team.s >= maxSupports || playerSupports >= supportCapPerPlayer)
-        ) {
-          return false;
-        }
-        if (
-          isBackpackItem(item) &&
-          (team.b >= maxBackpacks || playerBackpacks >= backpackCapPerPlayer)
-        ) {
-          return false;
-        }
-        return true;
-      });
-      if (available.length) {
-        acceptItem(
-          playerIndex,
-          available[Math.floor(random() * available.length)],
-        );
-      }
-    }
   }
 
   // 2. Fill every player's remaining slots from their own pool
@@ -1312,14 +998,6 @@ const tryFillTeam = (
     if (picks.length < 4) return null; // this attempt failed
   }
 
-  // Role requirements must hold before the attempt counts as a success -
-  // otherwise later, cap-relaxed tiers get a chance to satisfy them.
-  for (let playerIndex = 0; playerIndex < TEAM_SIZE; playerIndex++) {
-    const role = ROLES[playerRoles[playerIndex]];
-    if (role && !perPlayer[playerIndex].some(role.matches)) {
-      return null;
-    }
-  }
 
   return perPlayer;
 };
@@ -1440,14 +1118,7 @@ const rollStratagems = async () => {
 
 // Roll one player's equipment from their own pool.
 // usedBoosters tracks boosters already taken by other squad members.
-// usedByOthers (optional) maps category -> Set of internalNames taken by
-// other players, for the "no duplicate equipment" option.
-const rollEquipmentForPlayer = (
-  container,
-  playerIndex,
-  usedBoosters,
-  usedByOthers,
-) => {
+const rollEquipmentForPlayer = (container, playerIndex, usedBoosters) => {
   const equipmentCategories = ["prims", "seconds", "throws", "boosts"];
   const lists = getPlayerWorkingLists(playerIndex);
   container.innerHTML = "";
@@ -1468,14 +1139,7 @@ const rollEquipmentForPlayer = (
           (item) => item.internalName === lockedSlots.get(lockKey),
         ) || null;
       if (lockedItem) {
-        if (category === "boosts") usedBoosters.add(lockedItem.internalName);
-        if (usedByOthers) {
-          if (!usedByOthers.has(category)) {
-            usedByOthers.set(category, new Set());
-          }
-          usedByOthers.get(category).add(lockedItem.internalName);
-        }
-        container.innerHTML += equipmentCardHTML(lockedItem);
+
         return;
       }
       lockedSlots.delete(lockKey);
@@ -1494,29 +1158,10 @@ const rollEquipmentForPlayer = (
       }
     }
 
-    if (usedByOthers?.has(category)) {
-      const taken = usedByOthers.get(category);
-      const unused = list.filter(
-        (item) => !taken.has(item.internalName),
-      );
-      if (unused.length) {
-        list = unused;
-      } else {
-        console.warn(
-          "Squad randomizer: no unique equipment left, allowing duplicates",
-        );
-      }
-    }
 
-    const randomIndex = Math.floor(random() * list.length);
+    const randomIndex = Math.floor(Math.random() * list.length);
     const item = list[randomIndex];
     if (category === "boosts") usedBoosters.add(item.internalName);
-    if (usedByOthers) {
-      if (!usedByOthers.has(category)) {
-        usedByOthers.set(category, new Set());
-      }
-      usedByOthers.get(category).add(item.internalName);
-    }
 
     container.innerHTML += equipmentCardHTML(item);
   });
@@ -1527,17 +1172,10 @@ const rollEquipment = () => {
   proTipCounter++;
   if (proTipCounter === 3) rollProTip();
 
-  const options = getSupplyOptions();
   // Boosters are unique across the team (matching the in-game rule)
   const usedBoosters = new Set();
-  const usedByOthers = options.uniqueEquipment ? new Map() : null;
   getEquipmentContainers().forEach((container, playerIndex) => {
-    rollEquipmentForPlayer(
-      container,
-      playerIndex,
-      usedBoosters,
-      usedByOthers,
-    );
+    rollEquipmentForPlayer(container, playerIndex, usedBoosters);
   });
   refreshLockIcons();
 };
@@ -1704,97 +1342,7 @@ const pickStratagemsForSlots = (
   return indices.map((index) => candidates[index]).filter(Boolean);
 };
 
-// Fill a role requirement by swapping out the least-constrained pick
-const repairRoleRequirement = (picks, pool, role, usedNames) => {
-  if (!role || picks.some(role.matches)) return;
-  const candidates = pool.filter(
-    (item) =>
-      role.matches(item) &&
-      !usedNames.has(item.internalName) &&
-      !picks.some((pick) => pick.internalName === item.internalName),
-  );
-  if (!candidates.length) {
-    console.warn("Squad randomizer: could not satisfy role requirement");
-    return;
-  }
-  const replaceableIndex = picks.findIndex(
-    (item) => !isSupportItem(item) && !isBackpackItem(item),
-  );
-  const index = replaceableIndex >= 0 ? replaceableIndex : picks.length - 1;
-  if (index >= 0) {
-    picks[index] = candidates[Math.floor(random() * candidates.length)];
-  }
-};
 
-// --- Copy loadout as text ---------------------------------------------------
-
-const copyLoadoutText = async () => {
-  const armorContainers = getArmorContainers();
-  const equipContainers = getEquipmentContainers();
-  const stratContainers = getStratContainers();
-  const playerCount = teamMode ? TEAM_SIZE : 1;
-
-  const lines = ["Helldivers 2 Randomizer"];
-  const seedValue = document.getElementById("seedInput")?.value?.trim();
-  if (seedValue) lines.push(`Seed: ${seedValue}`);
-
-  for (let playerIndex = 0; playerIndex < playerCount; playerIndex++) {
-    lines.push("");
-    lines.push(teamMode ? `Player ${playerIndex + 1}` : "Loadout");
-
-    const armorName = armorContainers[playerIndex]
-      ?.querySelector(".card-title")
-      ?.innerText?.trim();
-    if (armorName) lines.push(`  Armor: ${armorName}`);
-
-    const equipment = equipContainers[playerIndex]
-      ? Array.from(
-          equipContainers[playerIndex].querySelectorAll(".card-title"),
-        )
-          .map((el) => el.innerText?.trim())
-          .filter(Boolean)
-      : [];
-    if (equipment.length === 4) {
-      lines.push(
-        `  Primary: ${equipment[0]} | Secondary: ${equipment[1]} | Throwable: ${equipment[2]} | Booster: ${equipment[3]}`,
-      );
-    }
-
-    const stratagems = stratContainers[playerIndex]
-      ? Array.from(
-          stratContainers[playerIndex].querySelectorAll(".card-title"),
-        )
-          .map((el) => el.innerText?.trim())
-          .filter(Boolean)
-      : [];
-    stratagems.forEach((name, position) =>
-      lines.push(`  Stratagem ${position + 1}: ${name}`),
-    );
-  }
-
-  const text = lines.join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand("copy");
-    textarea.remove();
-  }
-
-  const button = document.getElementById("copyLoadoutButton");
-  if (button) {
-    const icon = button.querySelector("i");
-    if (icon) icon.className = "bi bi-check2";
-    setTimeout(() => {
-      if (icon) icon.className = "bi bi-clipboard";
-    }, 1500);
-  }
-};
-
-window.copyLoadoutText = copyLoadoutText;
 window.refreshLockIcons = refreshLockIcons;
 window.toggleArmorLock = toggleArmorLock;
 
@@ -1918,7 +1466,7 @@ const rerollStratItem = async (internalName) => {
     return;
   }
 
-  const randomIndex = Math.floor(random() * availableItems.length);
+  const randomIndex = Math.floor(Math.random() * availableItems.length);
   const newItem = availableItems[randomIndex];
 
   updateCardWithItem(clickedCard, newItem, "../images/stratagems/");
@@ -1967,22 +1515,18 @@ const rerollEquipmentItem = (internalName, category) => {
     (item) => !otherInternalNames.has(item.internalName),
   );
 
-  // Boosters are always unique across the squad; with the "no duplicate
-  // equipment" option on, every category is.
-  if (
-    teamMode &&
-    (category === "booster" || getSupplyOptions().uniqueEquipment)
-  ) {
-    const otherNames = getEquipmentContainers()
+  // Boosters are unique across the whole squad (matching the in-game rule)
+  if (teamMode && category === "booster") {
+    const otherBoosterNames = getEquipmentContainers()
       .filter((container) => container !== playerContainer)
       .flatMap((container) =>
         Array.from(
-          container.querySelectorAll(`.card[data-category="${category}"]`),
+          container.querySelectorAll('.card[data-category="booster"]'),
         ).map((card) => card.dataset.internalName),
       );
 
     const uniqueOptions = availableItems.filter(
-      (item) => !otherNames.includes(item.internalName),
+      (item) => !otherBoosterNames.includes(item.internalName),
     );
     if (uniqueOptions.length) {
       availableItems = uniqueOptions;
@@ -1994,7 +1538,7 @@ const rerollEquipmentItem = (internalName, category) => {
     return;
   }
 
-  const randomIndex = Math.floor(random() * availableItems.length);
+  const randomIndex = Math.floor(Math.random() * availableItems.length);
   const newItem = availableItems[randomIndex];
 
   updateCardWithItem(clickedCard, newItem, "../images/equipment/");
@@ -2056,9 +1600,6 @@ const rerollPlayer = async (playerIndex) => {
     options,
   );
 
-  // Role requirement is repaired after the fact (swapping the least
-  // constrained pick for a role-matching one)
-  repairRoleRequirement(picks, pool, ROLES[playerRoles[playerIndex]], usedNames);
 
   const row = new Array(4);
   let next = 0;
@@ -2092,27 +1633,9 @@ const rerollPlayer = async (playerIndex) => {
         }
       });
   });
-  let usedByOthers = null;
-  if (options.uniqueEquipment) {
-    usedByOthers = new Map();
-    equipContainers.forEach((container, index) => {
-      if (index === playerIndex) return;
-      container
-        .querySelectorAll(".card.itemCards[data-category]")
-        .forEach((card) => {
-          const cat = card.dataset.category;
-          if (!cat || cat === "strat" || !card.dataset.internalName) return;
-          if (!usedByOthers.has(cat)) usedByOthers.set(cat, new Set());
-          usedByOthers.get(cat).add(card.dataset.internalName);
-        });
-    });
-  }
-  rollEquipmentForPlayer(
-    equipContainers[playerIndex],
-    playerIndex,
-    usedBoosters,
-    usedByOthers,
-  );
+
+
+  rollEquipmentForPlayer(equipContainers[playerIndex], playerIndex, usedBoosters);
   refreshLockIcons();
 
   if (typeof rollArmor === "function") rollArmor(playerIndex);
@@ -2168,9 +1691,6 @@ const checkLocalStorageForOptionsPreferences = async () => {
       teamModeOptions: {
         teamModeCheck: false,
       },
-      advancedOptions: {
-        advancedSettingsCheck: false,
-      },
     };
     localStorage.setItem("randomizerOptions", JSON.stringify(defaultOptions));
     await applyStoredOptionsToLists(defaultOptions);
@@ -2197,10 +1717,7 @@ const applyStoredOptionsToLists = async (options) => {
 
   // Apply squad mode (rebuild the loadout DOM for the right number of players)
   teamMode = !!elements.teamModeCheck?.checked;
-  buildLoadoutDOM();
-  updateAdvancedVisibility();
 
-  // Rebuild checkedWarbonds set
   checkedWarbonds.clear();
   Array.from(elements.warbondCheckboxes).forEach((cb) => {
     if (cb.checked) checkedWarbonds.add(cb.id);
@@ -2209,15 +1726,14 @@ const applyStoredOptionsToLists = async (options) => {
   // Per-player warbond selections (defaults to the global selection)
   loadSquadWarbondOptions(options);
 
-  // Squad roles and seed
-  const storedRoles = options.playerOptions;
-  playerRoles = PLAYER_NAMES.map(
-    (_, playerIndex) => storedRoles?.[`p${playerIndex}`] || null,
-  );
-  const seedValue = options.seedOptions?.seedInput || "";
-  const seedInput = document.getElementById("seedInput");
-  if (seedInput) seedInput.value = seedValue;
-  setSeed(seedValue);
+
+  // Pre-made loadout selection
+  const premadeSelect = document.getElementById("premadeSelect");
+  const storedPremade = options.premadeOptions?.premadeSelect;
+  if (premadeSelect) {
+    premadeSelect.value = storedPremade == null ? "" : storedPremade;
+  }
+  applyPremadeSelection();
 
   updateToggleAllButton(); // Update the toggle button state after loading
   await filterItemsByWarbond();
@@ -2228,7 +1744,7 @@ const applyStoredOptionsToLists = async (options) => {
 // Utility functions
 const rollProTip = () => {
   if (typeof PRO_TIPS !== "undefined" && PRO_TIPS?.length) {
-    const randomTip = PRO_TIPS[Math.floor(random() * PRO_TIPS.length)];
+    const randomTip = PRO_TIPS[Math.floor(Math.random() * PRO_TIPS.length)];
     elements.proTipsText.innerHTML = randomTip;
     proTipCounter = 0;
   }

@@ -152,7 +152,7 @@ const rollArmor = async (playerIndex = null) => {
     }
 
     // Roll random armor item
-    const randomIndex = Math.floor(random() * list.length);
+    const randomIndex = Math.floor(Math.random() * list.length);
     const rolledArmor = list[randomIndex];
 
     if (!rolledArmor) {
@@ -246,7 +246,7 @@ const rerollArmor = async (intName, category, sourceElement) => {
     (!newArmor || newArmor.internalName === intName) &&
     attempts < maxAttempts
   ) {
-    const randomIndex = Math.floor(random() * armorList.length);
+    const randomIndex = Math.floor(Math.random() * armorList.length);
     newArmor = armorList[randomIndex];
     attempts++;
   }

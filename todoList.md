@@ -166,10 +166,10 @@ Done in the squad randomizer (js/randomizer.js):
 - per-player re-roll (click a player's name), per-player warbond exclusions
 - item locks (lock button on every card, survives re-rolls)
 - copy loadout as text (clipboard button next to ALL)
-- difficulty presets (Options > Presets)
-- seeded rolls + Challenge of the Day (Options > Seed)
-- squad roles (Support / Anti-Tank / Crowd Control / Eagle / Orbital)
-- no duplicate equipment across the squad (Options checkbox)
+- pre-made loadout picker (Options > Pre-made loadout): rolls from the
+  Special Ops specialist kits in specOpsSpecs.md; kit items stay as-is even
+  when they break other rules (2026-10 revision - replaced presets, seeded
+  rolls, squad roles, and equipment uniqueness, which were removed)
 
 Parked ideas:
 - squad share links: encode the whole squad state into the URL hash

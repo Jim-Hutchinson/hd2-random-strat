@@ -118,15 +118,6 @@
                   <i class="bi bi-arrow-repeat"></i>
                 </span>
               </button>
-              <button
-                class="btn btn-secondary my-1 ms-1"
-                type="button"
-                id="copyLoadoutButton"
-                onclick="copyLoadoutText()"
-                title="Copy loadout as text"
-              >
-                <i class="bi bi-clipboard"></i>
-              </button>
             </div>
             <div class="col d-flex justify-content-start my-1">
               <div>
@@ -304,19 +295,6 @@
                 <div>
                   <div class="form-check">
                     <input
-                      class="form-check-input"
-                      type="checkbox"
-                      id="advancedSettingsCheck"
-                    />
-                    <label
-                      class="form-check-label text-white"
-                      for="advancedSettingsCheck"
-                    >
-                      Advanced settings
-                    </label>
-                  </div>
-                  <div class="form-check">
-                    <input
                       class="form-check-input optionalCheckbox"
                       type="checkbox"
                       value=""
@@ -399,60 +377,21 @@
                       Always roll a backpack
                     </label>
                   </div>
-                  <div class="form-check">
-                    <input
-                      class="form-check-input optionalCheckbox"
-                      type="checkbox"
-                      value=""
-                      id="uniqueEquipmentCheck"
-                    />
-                    <label
-                      class="form-check-label text-white"
-                      for="uniqueEquipmentCheck"
-                    >
-                      No duplicate equipment across the squad (Squad mode)
-                    </label>
-                  </div>
-                  <div class="mt-3" id="presetBlock">
-                    <h5 class="text-white">Presets</h5>
-                    <select class="form-select" id="presetSelect"></select>
-                    <button
-                      class="btn btn-warning btn-sm mt-2"
-                      type="button"
-                      id="applyPresetButton"
-                    >
-                      Apply preset
-                    </button>
-                  </div>
-                  <div class="mt-3" id="seedBlock">
-                    <h5 class="text-white">Seed</h5>
-                    <div class="input-group input-group-sm">
-                      <input
-                        type="text"
-                        class="form-control"
-                        id="seedInput"
-                        placeholder="Leave empty for fully random rolls"
-                      />
-                      <button
-                        class="btn btn-outline-light"
-                        type="button"
-                        id="clearSeedButton"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <small class="text-white-50 d-block mt-1">
-                      The same seed with the same options and warbonds produces
-                      the same rolls.
-                    </small>
-                  </div>
-                  <button
-                    class="btn btn-warning btn-sm mt-2"
-                    type="button"
-                    id="cotdButton"
-                  >
-                    Roll Challenge of the Day
-                  </button>
+
+                </div>
+              </div>
+              <div class="d-flex row" id="premadeLoadoutOptions">
+                <div class="col">
+                  <h5 class="text-white my-2">Pre-made loadout</h5>
+                  <select class="form-select" id="premadeSelect">
+                    <option value="">Any (fully random)</option>
+                  </select>
+                  <small class="text-white-50 d-block mt-1">
+                    Roll equipment and stratagems from one of the pre-made
+                    specialist kits. Kits with more options than fit are picked
+                    randomly; a kit's own items stay as-is even if they break
+                    other rules.
+                  </small>
                 </div>
               </div>
               <div class="d-flex row" id="eaglesAndOrbitalsOptions">
@@ -909,6 +848,7 @@
   <script src="../js/constants/armorsizes.js"></script>
   <script src="../js/constants/armorpassives.js"></script>
   <script src="../js/constants/protips.js"></script>
+  <script src="../js/constants/premadeloadouts.js"></script>
   <script src="../js/components/genWarbondCheckboxes.js"></script>
   <script src="../js/components/armorSettings.js"></script>
   <script src="../js/randomizer.js"></script>
