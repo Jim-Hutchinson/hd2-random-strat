@@ -158,3 +158,24 @@ NEW PAGE IDEAS:
   - the amount of times you die in a mission is the amount of Helldivers you'll skip
 
 - challenge based off of warbonds
+
+## Squad randomizer roadmap (added 2026-10)
+
+Done in the squad randomizer (js/randomizer.js):
+- 4-player squad mode with team-wide rules, 2x2 layout
+- per-player re-roll (click a player's name), per-player warbond exclusions
+- item locks (lock button on every card, survives re-rolls)
+- copy loadout as text (clipboard button next to ALL)
+- difficulty presets (Options > Presets)
+- seeded rolls + Challenge of the Day (Options > Seed)
+- squad roles (Support / Anti-Tank / Crowd Control / Eagle / Orbital)
+- no duplicate equipment across the squad (Options checkbox)
+
+Parked ideas:
+- squad share links: encode the whole squad state into the URL hash
+  (#s=...&p=N) so every member opens the same roll and can pass updated
+  links around; no backend needed
+- real-time sync between members (needs Firebase/PeerJS or similar)
+- PWA install + offline support (service worker to cache CDN assets)
+- keyboard shortcuts (R = re-roll all, 1-4 = re-roll player)
+- tag-based exclusions ("no shotguns", "no arc", ...)

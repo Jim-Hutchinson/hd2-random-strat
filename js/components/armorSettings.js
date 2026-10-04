@@ -131,6 +131,17 @@ const rollArmor = async (playerIndex = null) => {
     const playerList = getArmorListForPlayer(idx, activeArmorType.type);
     if (playerList) list = playerList;
 
+    // A locked armor slot keeps its current roll (while the item is still
+    // available under the current filters)
+    const lockKey = `armor:${idx}`;
+    if (lockedSlots.has(lockKey)) {
+      const stillAvailable = list.some(
+        (item) => item.internalName === lockedSlots.get(lockKey),
+      );
+      if (stillAvailable) continue;
+      lockedSlots.delete(lockKey);
+    }
+
     if (!list?.length) {
       container.innerHTML = `
         <div class="col-12 text-center text-white">
@@ -141,7 +152,7 @@ const rollArmor = async (playerIndex = null) => {
     }
 
     // Roll random armor item
-    const randomIndex = Math.floor(Math.random() * list.length);
+    const randomIndex = Math.floor(random() * list.length);
     const rolledArmor = list[randomIndex];
 
     if (!rolledArmor) {
@@ -156,8 +167,18 @@ const rollArmor = async (playerIndex = null) => {
     container.innerHTML = `
       <div class="col-2 px-1 d-flex justify-content-center">
         <div class="card itemCards armorLogo"
+          data-player="${idx}"
+          data-internal-name="${rolledArmor.internalName}"
           onclick="window.rerollArmor('${rolledArmor.internalName}', 'armor', this)"
         >
+          <button
+            class="lockButton"
+            type="button"
+            title="Lock / unlock"
+            onclick="event.stopPropagation(); window.toggleArmorLock(this)"
+          >
+            <i class="bi bi-unlock"></i>
+          </button>
           ${armorImage}
         </div>
       </div>
@@ -168,6 +189,8 @@ const rollArmor = async (playerIndex = null) => {
       </div>
     `;
   }
+
+  if (typeof refreshLockIcons === "function") refreshLockIcons();
 };
 
 // Helper: Get armor image HTML
@@ -206,6 +229,9 @@ const rerollArmor = async (intName, category, sourceElement) => {
 
   // Respect this player's warbond exclusions in squad mode
   const playerIndex = Number(armorContainer.dataset.player) || 0;
+  if (lockedSlots.has(`armor:${playerIndex}`)) {
+    return; // locked armor cannot be re-rolled individually
+  }
   let armorList = activeArmorType.list;
   const playerList = getArmorListForPlayer(playerIndex, activeArmorType.type);
   if (playerList) armorList = playerList;
@@ -220,7 +246,7 @@ const rerollArmor = async (intName, category, sourceElement) => {
     (!newArmor || newArmor.internalName === intName) &&
     attempts < maxAttempts
   ) {
-    const randomIndex = Math.floor(Math.random() * armorList.length);
+    const randomIndex = Math.floor(random() * armorList.length);
     newArmor = armorList[randomIndex];
     attempts++;
   }
@@ -269,6 +295,10 @@ const rerollArmor = async (intName, category, sourceElement) => {
       "onclick",
       `window.rerollArmor('${newArmor.internalName}', 'armor', this)`,
     );
+
+    // Keep the lock metadata in sync with the new armor
+    armorDiv.dataset.internalName = newArmor.internalName;
+    if (typeof refreshLockIcons === "function") refreshLockIcons();
   }
 };
 
