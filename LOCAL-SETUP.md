@@ -77,6 +77,43 @@ Then open `http://127.0.0.1:8734/randomizer/`.
 
 ---
 
+## Publishing to GitHub Pages (free hosting)
+
+The site is static, so GitHub hosts it for free:
+
+1. **Create the repo** — on github.com, click **New repository**, name it
+   (e.g. `hd2-random-strat`), keep it **Public**, and leave it empty (no
+   README/gitignore — this folder already has them).
+2. **Push the code** — from this folder:
+
+   ```bash
+   git remote add origin https://github.com/<your-username>/<repo-name>.git
+   git push -u origin main
+   ```
+
+   (A browser window may open to sign in to GitHub the first time.)
+3. **Turn on Pages** — in the repo: **Settings → Pages**, set **Source =
+   Deploy from a branch**, **Branch = main**, folder **/ (root)**, then
+   **Save**.
+4. Wait a minute or two. Your site is live at:
+
+   `https://<your-username>.github.io/<repo-name>/randomizer/`
+
+**Updating the site:** edit files, then `git add -A && git commit -m "..." &&
+git push`. Pages redeploys automatically within a minute or two.
+
+**Notes:**
+
+- Every page uses relative paths, so it works fine under the
+  `/<repo-name>/` sub-path. The root page shows the challenge list.
+- Options (warbonds, squad mode, etc.) are saved per-domain in the browser's
+  local storage — your locally-saved options don't carry over to the live
+  URL, and vice versa.
+- A custom domain can be attached later under Settings → Pages → Custom
+  domain (optional).
+
+---
+
 ## Squad mode reminder
 
 Flip the **Squad (4P)** switch on the randomizer page to roll four full
