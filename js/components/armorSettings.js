@@ -131,14 +131,19 @@ const rollArmor = async (playerIndex = null) => {
     const playerList = getArmorListForPlayer(idx, activeArmorType.type);
     if (playerList) list = playerList;
 
-    // A locked armor slot keeps its current roll (while the item is still
-    // available under the current filters)
+    // A locked armor slot stays put across warbond and pre-made kit filters.
     const lockKey = `armor:${idx}`;
     if (lockedSlots.has(lockKey)) {
-      const stillAvailable = list.some(
+      const sourceList =
+        activeArmorType.type === ARMOR_TYPES.PASSIVE
+          ? ARMOR_PASSIVES
+          : activeArmorType.type === ARMOR_TYPES.SET
+            ? ARMOR_SETS
+            : ARMOR_SIZES;
+      const stillExists = sourceList.some(
         (item) => item.internalName === lockedSlots.get(lockKey),
       );
-      if (stillAvailable) continue;
+      if (stillExists) continue;
       lockedSlots.delete(lockKey);
     }
 
@@ -169,7 +174,6 @@ const rollArmor = async (playerIndex = null) => {
         <div class="card itemCards armorLogo"
           data-player="${idx}"
           data-internal-name="${rolledArmor.internalName}"
-          onclick="window.rerollArmor('${rolledArmor.internalName}', 'armor', this)"
         >
           <button
             class="lockButton"
@@ -237,69 +241,54 @@ const rerollArmor = async (intName, category, sourceElement) => {
   if (playerList) armorList = playerList;
   if (!armorList?.length) return;
 
-  // Get current armor to avoid rerolling same item (optional)
-  let newArmor = null;
-  let attempts = 0;
-  const maxAttempts = 50;
-
-  while (
-    (!newArmor || newArmor.internalName === intName) &&
-    attempts < maxAttempts
-  ) {
-    const randomIndex = Math.floor(Math.random() * armorList.length);
-    newArmor = armorList[randomIndex];
-    attempts++;
-  }
-
-  if (!newArmor) return;
+  let alternatives = armorList.filter((item) => item.internalName !== intName);
+  if (!alternatives.length) return;
+  const newArmor = alternatives[Math.floor(Math.random() * alternatives.length)];
 
   // Update the display
-  const armorImage = await getArmorImageHTML(newArmor);
-  const imageElement = armorDiv.querySelector("img, i");
+  const imageElement = armorDiv.querySelector(".img-card-top, .armorSizeLogo");
 
-  if (imageElement) {
-    // Replace the existing image/icon
-    if (newArmor.tags?.includes("ArmorSize")) {
-      // It's an armor size icon
-      const newIcon = await getArmorSizeIcon(newArmor.internalName);
-      armorDiv.innerHTML = newIcon;
+  // Replace only the visual, preserving the lock button and its handler.
+  if (newArmor.tags?.includes("ArmorSize")) {
+    const newIcon = await getArmorSizeIcon(newArmor.internalName);
+    if (imageElement) {
+      imageElement.outerHTML = newIcon;
     } else {
-      // It's a regular image
-      const img = document.createElement("img");
-      const armorPath = newArmor.tags?.includes("ArmorPassive")
-        ? "armorpassives"
-        : "armor";
-      img.src = `../images/${armorPath}/${newArmor.imageURL}`;
-      img.className = "img-card-top";
-      img.alt = newArmor.displayName;
-      img.id = `${newArmor.internalName}-randImage`;
-
-      // Replace the image
-      if (imageElement.tagName === "IMG") {
-        imageElement.src = img.src;
-        imageElement.alt = img.alt;
-        imageElement.id = img.id;
-      } else {
-        armorDiv.innerHTML = img.outerHTML;
-      }
+      armorDiv.insertAdjacentHTML("beforeend", newIcon);
     }
+  } else {
+    const img = document.createElement("img");
+    const armorPath = newArmor.tags?.includes("ArmorPassive")
+      ? "armorpassives"
+      : "armor";
+    img.src = `../images/${armorPath}/${newArmor.imageURL}`;
+    img.className = "img-card-top";
+    img.alt = newArmor.displayName;
+    img.id = `${newArmor.internalName}-randImage`;
 
-    // Update the name text
-    const nameElement = armorContainer.querySelector(".card-title");
-    if (nameElement) {
-      nameElement.textContent = newArmor.displayName;
+    if (imageElement?.tagName === "IMG") {
+      imageElement.src = img.src;
+      imageElement.alt = img.alt;
+      imageElement.id = img.id;
+    } else if (imageElement) {
+      imageElement.outerHTML = img.outerHTML;
+    } else {
+      armorDiv.insertAdjacentHTML("beforeend", img.outerHTML);
     }
-
-    // Update onclick handler
-    armorDiv.setAttribute(
-      "onclick",
-      `window.rerollArmor('${newArmor.internalName}', 'armor', this)`,
-    );
-
-    // Keep the lock metadata in sync with the new armor
-    armorDiv.dataset.internalName = newArmor.internalName;
-    if (typeof refreshLockIcons === "function") refreshLockIcons();
   }
+
+  // Update the name text
+  const nameElement = armorContainer.querySelector(".card-title");
+  if (nameElement) {
+    nameElement.textContent = newArmor.displayName;
+  }
+
+  // Keep the lock metadata in sync with the new armor
+  armorDiv.dataset.internalName = newArmor.internalName;
+  if (typeof window.markPremadeBuildModified === "function") {
+    window.markPremadeBuildModified(playerIndex, "armor", newArmor.internalName);
+  }
+  if (typeof refreshLockIcons === "function") refreshLockIcons();
 };
 
 // Make rerollArmor available globally

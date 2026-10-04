@@ -382,15 +382,25 @@
               </div>
               <div class="d-flex row" id="premadeLoadoutOptions">
                 <div class="col">
-                  <h5 class="text-white my-2">Pre-made loadout</h5>
-                  <select class="form-select" id="premadeSelect">
-                    <option value="">Any (fully random)</option>
-                  </select>
+                  <h5 class="text-white my-2">Pre-made builds</h5>
+                  <div class="form-check form-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="premadeBuildsCheck"
+                    />
+                    <label
+                      class="form-check-label text-white"
+                      for="premadeBuildsCheck"
+                    >
+                      Use random pre-made builds for each player
+                    </label>
+                  </div>
                   <small class="text-white-50 d-block mt-1">
-                    Roll equipment and stratagems from one of the pre-made
-                    specialist kits. Kits with more options than fit are picked
-                    randomly; a kit's own items stay as-is even if they break
-                    other rules.
+                    When enabled, each player is assigned a random build from
+                    The Gauntlet's specialists. Re-roll ALL or an individual
+                    player to get new builds.
                   </small>
                 </div>
               </div>
@@ -848,6 +858,7 @@
   <script src="../js/constants/armorsizes.js"></script>
   <script src="../js/constants/armorpassives.js"></script>
   <script src="../js/constants/protips.js"></script>
+  <script src="../js/constants/theGauntletSpecialists.js"></script>
   <script src="../js/constants/premadeloadouts.js"></script>
   <script src="../js/components/genWarbondCheckboxes.js"></script>
   <script src="../js/components/armorSettings.js"></script>

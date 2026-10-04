@@ -58,8 +58,10 @@ let teamMode = false;
 let playerWarbonds = [null, null, null, null];
 // Locked slots: Map<"strat:p:pos" | "equip:p:category" | "armor:p", internalName>
 const lockedSlots = new Map();
-// Selected pre-made loadout kit (index into PREMADE_LOADOUTS, or null = any)
-let premadeIndex = null;
+// Random pre-made loadout assignment for each player (null = fully random)
+let premadeBuildsEnabled = false;
+let premadeIndices = [null, null, null, null];
+const modifiedPremadePlayers = new Set();
 
 // Helper: Get current checkbox states
 const getSupplyOptions = () => ({
@@ -102,8 +104,8 @@ const updatePerPlayerOptionsAvailability = () => {
 };
 
 // Per-player item pools: in squad mode every player can exclude warbonds
-// separately; in solo mode everyone shares the global list. A selected
-// pre-made loadout shrinks every category it covers to that kit's items.
+// separately; in solo mode everyone shares the global list. When enabled,
+// each player is restricted to their randomly assigned pre-made kit.
 const getPlayerWorkingLists = (playerIndex) => {
   const raw = {
     prims: [...PRIMARIES],
@@ -127,17 +129,24 @@ const getPlayerWorkingLists = (playerIndex) => {
       lists[key] = byWarbond(raw[key]);
     });
   } else {
-    lists = workingLists;
+    lists = Object.fromEntries(
+      Object.entries(workingLists).map(([key, list]) => [key, [...list]]),
+    );
   }
 
   // Pre-made loadout: keep only the kit's items. If that leaves a category
   // empty (its item is excluded by a warbond filter, say), the kit wins and
   // its item is used as-is.
-  if (premadeIndex != null && PREMADE_LOADOUTS[premadeIndex]) {
-    const kitItems = PREMADE_LOADOUTS[premadeIndex].items || {};
+  const assignedIndex = premadeIndices[teamMode ? playerIndex : 0];
+  if (
+    premadeBuildsEnabled &&
+    assignedIndex != null &&
+    PREMADE_LOADOUTS[assignedIndex]
+  ) {
+    const kitItems = PREMADE_LOADOUTS[assignedIndex].items || {};
     Object.keys(raw).forEach((key) => {
       const allowed = new Set(kitItems[key] || []);
-      if (!allowed.size) return; // the kit does not touch this category
+      if (!allowed.size) return;
       const filtered = lists[key].filter((item) =>
         allowed.has(item.internalName),
       );
@@ -152,19 +161,162 @@ const getPlayerWorkingLists = (playerIndex) => {
 
 // --- Pre-made loadouts ------------------------------------------------------
 
-const applyPremadeSelection = () => {
-  const value = document.getElementById("premadeSelect")?.value ?? "";
-  premadeIndex = value === "" ? null : Number(value);
-};
-
-const savePremadeSelection = () => {
+const savePremadeOptions = () => {
   const randomizerOptions = JSON.parse(
     localStorage.getItem("randomizerOptions") || "{}",
   );
   randomizerOptions.premadeOptions = {
-    premadeSelect: premadeIndex == null ? "" : String(premadeIndex),
+    enabled: premadeBuildsEnabled,
   };
   localStorage.setItem("randomizerOptions", JSON.stringify(randomizerOptions));
+};
+
+const updatePlayerBuildLabels = () => {
+  document.querySelectorAll(".playerHeader").forEach((header) => {
+    const label = header.querySelector(".playerBuildName");
+    if (!label) return;
+
+    const playerIndex = Number(header.dataset.player);
+    const assignedIndex = premadeIndices[playerIndex];
+    const build =
+      premadeBuildsEnabled && assignedIndex != null
+        ? PREMADE_LOADOUTS[assignedIndex]
+        : null;
+    const modified = modifiedPremadePlayers.has(playerIndex);
+    label.textContent = build
+      ? `Build: ${build.name}${modified ? " (modified)" : ""}`
+      : "";
+    label.classList.toggle("d-none", !build);
+  });
+};
+
+const markPremadeBuildModified = (playerIndex, category, internalName) => {
+  if (!premadeBuildsEnabled) return;
+  const assignedIndex = premadeIndices[teamMode ? playerIndex : 0];
+  if (assignedIndex == null) return;
+  const build = PREMADE_LOADOUTS[assignedIndex];
+  if (!build) return;
+
+  const categoryMap = {
+    primary: "prims",
+    secondary: "seconds",
+    throwable: "throws",
+    strat: "strats",
+    armor: "armorPassives",
+  };
+  const buildCategory = categoryMap[category];
+  if (
+    buildCategory &&
+    build.items[buildCategory]?.length &&
+    !build.items[buildCategory].includes(internalName)
+  ) {
+    modifiedPremadePlayers.add(playerIndex);
+    updatePlayerBuildLabels();
+  }
+};
+
+window.markPremadeBuildModified = markPremadeBuildModified;
+
+const getPremadeBuildsCompatibleWithLocks = (playerIndex) => {
+  const equipmentCategories = {
+    primary: "prims",
+    secondary: "seconds",
+    throwable: "throws",
+  };
+  const armorUsesPassive =
+    typeof getSelectedArmorRollType === "function" &&
+    getSelectedArmorRollType()?.type === "passive";
+
+  return PREMADE_LOADOUTS.map((build, index) => ({ build, index }))
+    .filter(({ build }) => {
+      for (const [key, internalName] of lockedSlots) {
+        if (key.startsWith(`strat:${playerIndex}:`)) {
+          if (!build.items.strats.includes(internalName)) return false;
+          continue;
+        }
+
+        if (key.startsWith(`equip:${playerIndex}:`)) {
+          const category = key.slice(`equip:${playerIndex}:`.length);
+          const buildCategory = equipmentCategories[category];
+          if (
+            buildCategory &&
+            !build.items[buildCategory]?.includes(internalName)
+          ) {
+            return false;
+          }
+          continue;
+        }
+
+        if (
+          armorUsesPassive &&
+          key === `armor:${playerIndex}` &&
+          !build.items.armorPassives.includes(internalName)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .map(({ index }) => index);
+};
+
+const choosePremadeAssignment = (
+  playerIndex,
+  alreadyAssigned = new Set(),
+  previousIndex = premadeIndices[playerIndex],
+) => {
+  let candidates = getPremadeBuildsCompatibleWithLocks(playerIndex);
+  if (!candidates.length) {
+    candidates =
+      previousIndex != null
+        ? [previousIndex]
+        : PREMADE_LOADOUTS.map((_, index) => index);
+  }
+
+  const unusedCandidates = candidates.filter(
+    (index) => !alreadyAssigned.has(index),
+  );
+  const choices = unusedCandidates.length ? unusedCandidates : candidates;
+  return choices[Math.floor(Math.random() * choices.length)];
+};
+
+const randomizePremadeAssignments = (
+  playerIndices = null,
+  refreshLabels = true,
+) => {
+  if (!premadeBuildsEnabled || !PREMADE_LOADOUTS.length) {
+    premadeIndices = [null, null, null, null];
+    modifiedPremadePlayers.clear();
+    if (refreshLabels) updatePlayerBuildLabels();
+    return;
+  }
+
+  const count = teamMode ? TEAM_SIZE : 1;
+  if (playerIndices) {
+    playerIndices.forEach((playerIndex) => {
+      premadeIndices[playerIndex] = choosePremadeAssignment(playerIndex);
+      modifiedPremadePlayers.delete(playerIndex);
+    });
+    if (refreshLabels) updatePlayerBuildLabels();
+    return;
+  }
+
+  const previousIndices = [...premadeIndices];
+  premadeIndices = [null, null, null, null];
+  modifiedPremadePlayers.clear();
+  const alreadyAssigned = new Set();
+  for (const playerIndex of shuffleArray(
+    Array.from({ length: count }, (_, index) => index),
+  )) {
+    const index = choosePremadeAssignment(
+      playerIndex,
+      alreadyAssigned,
+      previousIndices[playerIndex],
+    );
+    premadeIndices[playerIndex] = index;
+    alreadyAssigned.add(index);
+  }
+  if (refreshLabels) updatePlayerBuildLabels();
 };
 
 // --- Per-player warbond selections -----------------------------------------
@@ -346,11 +498,15 @@ const buildLoadoutDOM = () => {
         <div class="playerBlock col-12 col-lg-6">
           <h5
             class="text-white text-center playerHeader my-2"
+            data-player="${playerIndex}"
             onclick="rerollPlayer(${playerIndex})"
             title="Re-roll this player's loadout"
           >
-            ${name}
-            <i class="bi bi-arrow-repeat ms-1"></i>
+            <span>
+              ${name}
+              <i class="bi bi-arrow-repeat ms-1"></i>
+            </span>
+            <span class="playerBuildName d-block small text-warning d-none"></span>
           </h5>
           <div
             class="armorContainer d-flex row justify-content-start"
@@ -415,6 +571,7 @@ const initEventListeners = () => {
       teamMode = e.target.checked;
       buildLoadoutDOM();
       updatePerPlayerOptionsAvailability();
+      randomizePremadeAssignments();
       rollEquipment();
       rollStratagems();
       if (typeof rollArmor === "function") rollArmor();
@@ -463,17 +620,13 @@ const initEventListeners = () => {
     toggleAllButton.addEventListener("change", handleToggleAllWarbonds);
   }
 
-  // Pre-made loadout selection
-  const premadeSelect = document.getElementById("premadeSelect");
-  if (premadeSelect) {
-    premadeSelect.innerHTML =
-      '<option value="">Any (fully random)</option>' +
-      PREMADE_LOADOUTS.map(
-        (kit, index) => `<option value="${index}">${kit.name}</option>`,
-      ).join("");
-    premadeSelect.addEventListener("change", () => {
-      applyPremadeSelection();
-      savePremadeSelection();
+  // Toggle random pre-made builds (one independently assigned kit per player)
+  const premadeToggle = document.getElementById("premadeBuildsCheck");
+  if (premadeToggle) {
+    premadeToggle.addEventListener("change", () => {
+      premadeBuildsEnabled = premadeToggle.checked;
+      randomizePremadeAssignments();
+      savePremadeOptions();
       rollEquipment();
       rollStratagems();
       if (typeof rollArmor === "function") rollArmor();
@@ -489,9 +642,26 @@ const initEventListeners = () => {
         toggleCardLock(lockButton.closest(".itemCards"));
         return;
       }
+      const armorTarget = e.target.closest(
+        ".armorLogo, .armorContainer .card-title",
+      );
+      if (armorTarget) {
+        const armorContainer = armorTarget.closest(".armorContainer");
+        const armorCard = armorTarget.classList.contains("armorLogo")
+          ? armorTarget
+          : armorContainer?.querySelector(".armorLogo");
+        if (armorCard) {
+          window.rerollArmor(
+            armorCard.dataset.internalName,
+            "armor",
+            armorCard,
+          );
+        }
+        return;
+      }
       const card = e.target.closest(".itemCards");
       if (!card || !card.dataset.category) return;
-      rerollItem(card.dataset.internalName, card.dataset.category);
+      rerollItem(card);
     });
   }
 };
@@ -708,6 +878,8 @@ const filterStratListForPlayer = async (playerIndex) =>
 
 // Get random unique numbers with supply constraints (solo mode - one player)
 const getRandomUniqueNumbers = (list, options, amt) => {
+  if (!list?.length || amt <= 0) return [];
+
   const { oneSupport, oneBackpack, alwaysSupport, alwaysBackpack } = options;
   let hasBackpack = false;
   let hasSupportWeapon = false;
@@ -847,11 +1019,15 @@ const rollTeamStratagems = (pools, options, lockedByPlayer) => {
 
   if (!result) {
     console.warn("Squad randomizer: could not fill all stratagem slots");
-    // Last resort: everyone gets four random stratagems from their own pool.
+    // Last resort: allow repeats, and fall back to the full list if a
+    // player's filters leave them with no available stratagems.
     result = pools.map((pool) => {
       const picks = [];
-      for (let i = 0; i < 4 && pool.length; i++) {
-        picks.push(pool[Math.floor(Math.random() * pool.length)]);
+      const fallbackPool = pool.length ? pool : STRATAGEMS;
+      for (let i = 0; i < 4 && fallbackPool.length; i++) {
+        picks.push(
+          fallbackPool[Math.floor(Math.random() * fallbackPool.length)],
+        );
       }
       return picks;
     });
@@ -891,9 +1067,6 @@ const tryFillTeam = (
   for (let playerIndex = 0; playerIndex < TEAM_SIZE; playerIndex++) {
     (lockedByPlayer?.[playerIndex] || []).forEach((item) => {
       if (!item) return;
-      if (!pools[playerIndex].some((x) => x.internalName === item.internalName)) {
-        return; // lock dropped elsewhere when the item left the pool
-      }
       perPlayer[playerIndex].push(item);
       used.add(item.internalName);
       if (isSupportItem(item)) team.s += 1;
@@ -1042,6 +1215,56 @@ const equipmentCardHTML = (item) => `
   </div>
 `;
 
+const getAssignedPremadeStratagems = (playerIndex) => {
+  const assignedIndex = premadeIndices[teamMode ? playerIndex : 0];
+  const names = premadeBuildsEnabled && assignedIndex != null
+    ? PREMADE_LOADOUTS[assignedIndex]?.items?.strats || []
+    : [];
+  return names
+    .map((name) => STRATAGEMS.find((item) => item.internalName === name))
+    .filter(Boolean);
+};
+
+// Complete a player's row if constraints or an empty filtered pool prevented
+// the normal picker from returning four items. With a pre-made kit enabled,
+// only use items listed in that kit; repeat a kit item as the last resort.
+const completeStratagemRow = (
+  row,
+  playerPool,
+  fallbackPool,
+  buildPool = [],
+) => {
+  const usedNames = new Set(
+    row.filter(Boolean).map((item) => item.internalName),
+  );
+  const candidatePools = buildPool.length
+    ? [playerPool, buildPool]
+    : [playerPool, fallbackPool, STRATAGEMS];
+
+  candidatePools.forEach((pool) => {
+    for (const item of shuffleArray(pool || [])) {
+      if (row.filter(Boolean).length === 4) break;
+      if (usedNames.has(item.internalName)) continue;
+      row[row.findIndex((slot) => !slot)] = item;
+      usedNames.add(item.internalName);
+    }
+  });
+
+  const repeatPool = playerPool?.length
+    ? playerPool
+    : buildPool.length
+      ? buildPool
+      : fallbackPool?.length
+        ? fallbackPool
+        : STRATAGEMS;
+  while (row.filter(Boolean).length < 4 && repeatPool.length) {
+    row[row.findIndex((slot) => !slot)] =
+      repeatPool[Math.floor(Math.random() * repeatPool.length)];
+  }
+
+  return row;
+};
+
 // Roll stratagems
 const rollStratagems = async () => {
   proTipCounter++;
@@ -1053,6 +1276,7 @@ const rollStratagems = async () => {
   // Per player: a length-4 array with one item (or undefined) per slot, so
   // locked slots keep their position.
   const slots = [];
+  const fallbackPool = await filterStratList();
 
   if (teamMode) {
     // Every player rolls from their own pool (per-player warbonds + shared
@@ -1068,21 +1292,34 @@ const rollStratagems = async () => {
 
     containers.forEach((_, playerIndex) => {
       const locked = lockedByPlayer[playerIndex];
+      const buildPool = getAssignedPremadeStratagems(playerIndex);
+      const buildNames = buildPool.length
+        ? new Set(buildPool.map((item) => item.internalName))
+        : null;
       const lockedNames = new Set(
         locked.filter(Boolean).map((item) => item.internalName),
       );
       const newPicks = (playerPicks[playerIndex] || []).filter(
-        (item) => !lockedNames.has(item.internalName),
+        (item) =>
+          !lockedNames.has(item.internalName) &&
+          (!buildNames || buildNames.has(item.internalName)),
       );
       const row = new Array(4);
       let next = 0;
       for (let position = 0; position < 4; position++) {
         row[position] = locked[position] ?? newPicks[next++];
       }
-      slots.push(row);
+      slots.push(
+        completeStratagemRow(
+          row,
+          pools[playerIndex],
+          fallbackPool,
+          buildPool,
+        ),
+      );
     });
   } else {
-    const filteredList = await filterStratList();
+    const filteredList = await filterStratListForPlayer(0);
     for (let playerIndex = 0; playerIndex < containers.length; playerIndex++) {
       const locked = collectLockedStrats(playerIndex, filteredList);
       const ownItems = locked.filter(Boolean);
@@ -1098,7 +1335,14 @@ const rollStratagems = async () => {
       for (let position = 0; position < 4; position++) {
         row[position] = locked[position] ?? newPicks[next++];
       }
-      slots.push(row);
+      slots.push(
+        completeStratagemRow(
+          row,
+          filteredList,
+          fallbackPool,
+          getAssignedPremadeStratagems(playerIndex),
+        ),
+      );
     }
   }
 
@@ -1120,29 +1364,41 @@ const rollStratagems = async () => {
 // usedBoosters tracks boosters already taken by other squad members.
 const rollEquipmentForPlayer = (container, playerIndex, usedBoosters) => {
   const equipmentCategories = ["prims", "seconds", "throws", "boosts"];
+  const lockCategories = {
+    prims: "primary",
+    seconds: "secondary",
+    throws: "throwable",
+    boosts: "booster",
+  };
+  const sourceLists = {
+    prims: PRIMARIES,
+    seconds: SECONDARIES,
+    throws: THROWABLES,
+    boosts: BOOSTERS,
+  };
   const lists = getPlayerWorkingLists(playerIndex);
   container.innerHTML = "";
 
   equipmentCategories.forEach((category) => {
     let list = lists[category];
 
-    if (!list?.length) {
-      container.innerHTML += `<div class="col-3 d-flex justify-content-center"><div class="card itemCards"></div></div>`;
-      return;
-    }
-
-    // A locked slot keeps its item (as long as it is still in the pool)
-    const lockKey = `equip:${playerIndex}:${category}`;
+    // Locks take priority over warbond and pre-made kit filters.
+    const lockKey = `equip:${playerIndex}:${lockCategories[category]}`;
     if (lockedSlots.has(lockKey)) {
-      const lockedItem =
-        list.find(
-          (item) => item.internalName === lockedSlots.get(lockKey),
-        ) || null;
+      const lockedItem = sourceLists[category].find(
+        (item) => item.internalName === lockedSlots.get(lockKey),
+      );
       if (lockedItem) {
-
+        container.innerHTML += equipmentCardHTML(lockedItem);
+        if (category === "boosts") usedBoosters.add(lockedItem.internalName);
         return;
       }
       lockedSlots.delete(lockKey);
+    }
+
+    if (!list?.length) {
+      container.innerHTML += `<div class="col-3 d-flex justify-content-center"><div class="card itemCards"></div></div>`;
+      return;
     }
 
     if (teamMode && category === "boosts") {
@@ -1174,7 +1430,21 @@ const rollEquipment = () => {
 
   // Boosters are unique across the team (matching the in-game rule)
   const usedBoosters = new Set();
-  getEquipmentContainers().forEach((container, playerIndex) => {
+  const containers = getEquipmentContainers();
+  // Reserve all currently valid locked boosters before rolling unlocked ones,
+  // so a random pick for an earlier player cannot duplicate a later lock.
+  containers.forEach((_, playerIndex) => {
+    const lockedName = lockedSlots.get(`equip:${playerIndex}:booster`);
+    if (
+      lockedName &&
+      BOOSTERS.some(
+        (item) => item.internalName === lockedName,
+      )
+    ) {
+      usedBoosters.add(lockedName);
+    }
+  });
+  containers.forEach((container, playerIndex) => {
     rollEquipmentForPlayer(container, playerIndex, usedBoosters);
   });
   refreshLockIcons();
@@ -1247,20 +1517,19 @@ const toggleArmorLock = (buttonElement) => {
   refreshLockIcons();
 };
 
-// Locked stratagem slots for a player, validated against their current pool.
-// Returns a length-4 array with the locked item (or undefined) per position;
-// locks whose item left the pool are dropped.
+// Locked stratagem slots remain authoritative even if filters or a pre-made
+// kit change the current pool. Returns a length-4 array per player.
 const collectLockedStrats = (playerIndex, pool) => {
   const slots = new Array(4);
   for (let position = 0; position < 4; position++) {
     const key = `strat:${playerIndex}:${position}`;
     if (!lockedSlots.has(key)) continue;
-    const item = pool.find(
+    const item = STRATAGEMS.find(
       (s) => s.internalName === lockedSlots.get(key),
     );
     if (item) {
       slots[position] = item;
-    } else {
+    } else if (!pool.some((s) => s.internalName === lockedSlots.get(key))) {
       lockedSlots.delete(key);
     }
   }
@@ -1347,7 +1616,7 @@ window.refreshLockIcons = refreshLockIcons;
 window.toggleArmorLock = toggleArmorLock;
 
 // Reroll a single stratagem card (team-aware)
-const rerollStratItem = async (internalName) => {
+const rerollStratItem = async (clickedCard) => {
   const options = getSupplyOptions();
 
   // Collect every stratagem card, player by player, in roll order
@@ -1355,12 +1624,7 @@ const rerollStratItem = async (internalName) => {
     Array.from(container.querySelectorAll(".card.itemCards")),
   );
 
-  const clickedCard = allStratCards.find(
-    (card) =>
-      card.dataset.internalName === internalName &&
-      card.dataset.category === "strat",
-  );
-  if (!clickedCard) return;
+  if (!clickedCard || !allStratCards.includes(clickedCard)) return;
 
   // The clicked card's player owns the pool this reroll draws from
   const playerIndex = Number(clickedCard.dataset.player) || 0;
@@ -1416,50 +1680,50 @@ const rerollStratItem = async (internalName) => {
   // "Always" guarantees one per player in squad mode, one per loadout in solo
   const requiredMinimum = teamMode ? TEAM_SIZE : 1;
 
-  let availableItems = filteredList.filter(
-    (item) => !otherItemNames.has(item.internalName),
-  );
+  const getAvailableItems = (pool) => {
+    let candidates = pool.filter(
+      (item) => !otherItemNames.has(item.internalName),
+    );
 
-  // Apply "always support" constraint (takes priority over the "only one"
-  // support rules)
-  if (options.alwaysSupport && remainingSupports < requiredMinimum) {
-    availableItems = availableItems.filter(isSupportItem);
-  } else if (options.oneSupport && remainingSupports >= 1) {
-    availableItems = availableItems.filter((item) => !isSupportItem(item));
-  } else if (
-    teamMode &&
-    options.oneSupportPerPlayer &&
-    playerRemainingSupports >= 1
-  ) {
-    availableItems = availableItems.filter((item) => !isSupportItem(item));
-  }
+    // Apply support limits before considering the clicked slot.
+    if (options.alwaysSupport && remainingSupports < requiredMinimum) {
+      candidates = candidates.filter(isSupportItem);
+    } else if (options.oneSupport && remainingSupports >= 1) {
+      candidates = candidates.filter((item) => !isSupportItem(item));
+    } else if (
+      teamMode &&
+      options.oneSupportPerPlayer &&
+      playerRemainingSupports >= 1
+    ) {
+      candidates = candidates.filter((item) => !isSupportItem(item));
+    }
 
-  // Apply "always backpack" constraint (takes priority over the "only one"
-  // backpack rules)
-  if (options.alwaysBackpack && remainingBackpacks < requiredMinimum) {
-    availableItems = availableItems.filter(isBackpackItem);
-  } else if (options.oneBackpack && remainingBackpacks >= 1) {
-    availableItems = availableItems.filter((item) => !isBackpackItem(item));
-  } else if (
-    teamMode &&
-    options.oneBackpackPerPlayer &&
-    playerRemainingBackpacks >= 1
-  ) {
-    availableItems = availableItems.filter((item) => !isBackpackItem(item));
-  }
+    // Apply backpack limits before considering the clicked slot.
+    if (options.alwaysBackpack && remainingBackpacks < requiredMinimum) {
+      candidates = candidates.filter(isBackpackItem);
+    } else if (options.oneBackpack && remainingBackpacks >= 1) {
+      candidates = candidates.filter((item) => !isBackpackItem(item));
+    } else if (
+      teamMode &&
+      options.oneBackpackPerPlayer &&
+      playerRemainingBackpacks >= 1
+    ) {
+      candidates = candidates.filter((item) => !isBackpackItem(item));
+    }
 
-  // Max one exosuit / FRV across the team
-  if (remainingExosuits >= 1) {
-    availableItems = availableItems.filter((item) => !isExosuitItem(item));
-  }
-  if (remainingFRVs >= 1) {
-    availableItems = availableItems.filter((item) => !isFrvItem(item));
-  }
+    if (remainingExosuits >= 1) {
+      candidates = candidates.filter((item) => !isExosuitItem(item));
+    }
+    if (remainingFRVs >= 1) {
+      candidates = candidates.filter((item) => !isFrvItem(item));
+    }
 
-  // Avoid rolling the same item again
-  availableItems = availableItems.filter(
-    (item) => item.internalName !== currentItem.internalName,
-  );
+    return candidates.filter(
+      (item) => item.internalName !== currentItem.internalName,
+    );
+  };
+
+  let availableItems = getAvailableItems(filteredList);
 
   if (availableItems.length === 0) {
     console.warn("No valid stratagems available for reroll");
@@ -1470,6 +1734,7 @@ const rerollStratItem = async (internalName) => {
   const newItem = availableItems[randomIndex];
 
   updateCardWithItem(clickedCard, newItem, "../images/stratagems/");
+  markPremadeBuildModified(playerIndex, "strat", newItem.internalName);
 
   if (rolledStrats[currentPosition] !== undefined) {
     rolledStrats[currentPosition] = newItem.internalName;
@@ -1477,18 +1742,16 @@ const rerollStratItem = async (internalName) => {
 };
 
 // Reroll a single equipment card (team-aware for boosters)
-const rerollEquipmentItem = (internalName, category) => {
+const rerollEquipmentItem = (clickedCard) => {
+  if (!clickedCard?.dataset?.category) return;
+  const category = clickedCard.dataset.category;
+  const internalName = clickedCard.dataset.internalName;
   const categoryMap = {
     primary: "prims",
     secondary: "seconds",
     throwable: "throws",
     booster: "boosts",
   };
-
-  const clickedCard = document.querySelector(
-    `.card[data-internal-name="${internalName}"][data-category="${category}"]`,
-  );
-  if (!clickedCard) return;
 
   const playerContainer = clickedCard.closest(".equipmentContainer");
   if (!playerContainer) return;
@@ -1498,24 +1761,26 @@ const rerollEquipmentItem = (internalName, category) => {
     return; // locked slots cannot be re-rolled individually
   }
   const listKey = categoryMap[category];
-  const list = getPlayerWorkingLists(playerIndex)[listKey];
-  if (!list?.length) return;
+  if (!listKey) return;
+  const list = getPlayerWorkingLists(playerIndex)[listKey] || [];
 
-  // Remove current item to avoid rolling the same one
-  let availableItems = list.filter((item) => item.internalName !== internalName);
-
-  // Prevent duplicates within the same player's equipment slots
   const otherCards = Array.from(
     playerContainer.querySelectorAll(".card.itemCards"),
   ).filter((card) => card !== clickedCard);
   const otherInternalNames = new Set(
     otherCards.map((card) => card.dataset.internalName),
   );
-  availableItems = availableItems.filter(
-    (item) => !otherInternalNames.has(item.internalName),
-  );
 
-  // Boosters are unique across the whole squad (matching the in-game rule)
+  const getAvailableItems = (source) =>
+    source.filter(
+      (item) =>
+        item.internalName !== internalName &&
+        !otherInternalNames.has(item.internalName),
+    );
+
+  let availableItems = getAvailableItems(list);
+
+  // Boosters are unique across the whole squad when another unique choice exists.
   if (teamMode && category === "booster") {
     const otherBoosterNames = getEquipmentContainers()
       .filter((container) => container !== playerContainer)
@@ -1528,28 +1793,23 @@ const rerollEquipmentItem = (internalName, category) => {
     const uniqueOptions = availableItems.filter(
       (item) => !otherBoosterNames.includes(item.internalName),
     );
-    if (uniqueOptions.length) {
-      availableItems = uniqueOptions;
-    }
+    if (uniqueOptions.length) availableItems = uniqueOptions;
   }
 
-  if (availableItems.length === 0) {
-    console.warn("No unique equipment available");
-    return;
-  }
+  if (!availableItems.length) return;
 
-  const randomIndex = Math.floor(Math.random() * availableItems.length);
-  const newItem = availableItems[randomIndex];
-
+  const newItem =
+    availableItems[Math.floor(Math.random() * availableItems.length)];
   updateCardWithItem(clickedCard, newItem, "../images/equipment/");
+  markPremadeBuildModified(playerIndex, category, newItem.internalName);
 };
 
 // Reroll individual item
-const rerollItem = async (internalName, category) => {
-  if (category === "strat") {
-    await rerollStratItem(internalName);
+const rerollItem = async (card) => {
+  if (card?.dataset?.category === "strat") {
+    await rerollStratItem(card);
   } else {
-    rerollEquipmentItem(internalName, category);
+    rerollEquipmentItem(card);
   }
 };
 
@@ -1560,6 +1820,7 @@ window.rerollItem = rerollItem;
 // their rolls, and all team-wide rules still hold.
 const rerollPlayer = async (playerIndex) => {
   if (!teamMode) return;
+  randomizePremadeAssignments([playerIndex], false);
   const options = getSupplyOptions();
   const stratContainers = getStratContainers();
   const equipContainers = getEquipmentContainers();
@@ -1606,6 +1867,12 @@ const rerollPlayer = async (playerIndex) => {
   for (let position = 0; position < 4; position++) {
     row[position] = locked[position] ?? picks[next++];
   }
+  completeStratagemRow(
+    row,
+    fullPool,
+    await filterStratList(),
+    getAssignedPremadeStratagems(playerIndex),
+  );
 
   targetStratContainer.innerHTML = "";
   row.forEach((stratagem, position) => {
@@ -1638,7 +1905,8 @@ const rerollPlayer = async (playerIndex) => {
   rollEquipmentForPlayer(equipContainers[playerIndex], playerIndex, usedBoosters);
   refreshLockIcons();
 
-  if (typeof rollArmor === "function") rollArmor(playerIndex);
+  if (typeof rollArmor === "function") await rollArmor(playerIndex);
+  updatePlayerBuildLabels();
 };
 
 // Make rerollPlayer available globally (used by the player header clicks)
@@ -1727,13 +1995,16 @@ const applyStoredOptionsToLists = async (options) => {
   loadSquadWarbondOptions(options);
 
 
-  // Pre-made loadout selection
-  const premadeSelect = document.getElementById("premadeSelect");
-  const storedPremade = options.premadeOptions?.premadeSelect;
-  if (premadeSelect) {
-    premadeSelect.value = storedPremade == null ? "" : storedPremade;
-  }
-  applyPremadeSelection();
+  // Load the random pre-made builds toggle. Preserve the former picker setting
+  // as enabled when reading older localStorage data.
+  const storedPremadeOptions = options.premadeOptions || {};
+  premadeBuildsEnabled =
+    typeof storedPremadeOptions.enabled === "boolean"
+      ? storedPremadeOptions.enabled
+      : storedPremadeOptions.premadeSelect != null &&
+        storedPremadeOptions.premadeSelect !== "";
+  const premadeToggle = document.getElementById("premadeBuildsCheck");
+  if (premadeToggle) premadeToggle.checked = premadeBuildsEnabled;
 
   updateToggleAllButton(); // Update the toggle button state after loading
   await filterItemsByWarbond();
@@ -1752,6 +2023,8 @@ const rollProTip = () => {
 
 const randomizeAll = async () => {
   await checkLocalStorageForOptionsPreferences();
+  buildLoadoutDOM();
+  randomizePremadeAssignments();
   updateToggleAllButton(); // Ensure toggle button reflects current state
   rollEquipment();
   await rollStratagems();
