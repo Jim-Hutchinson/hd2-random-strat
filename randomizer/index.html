@@ -304,6 +304,19 @@
                 <div>
                   <div class="form-check">
                     <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="advancedSettingsCheck"
+                    />
+                    <label
+                      class="form-check-label text-white"
+                      for="advancedSettingsCheck"
+                    >
+                      Advanced settings
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input
                       class="form-check-input optionalCheckbox"
                       type="checkbox"
                       value=""
@@ -400,7 +413,7 @@
                       No duplicate equipment across the squad (Squad mode)
                     </label>
                   </div>
-                  <div class="mt-3">
+                  <div class="mt-3" id="presetBlock">
                     <h5 class="text-white">Presets</h5>
                     <select class="form-select" id="presetSelect"></select>
                     <button
@@ -411,7 +424,7 @@
                       Apply preset
                     </button>
                   </div>
-                  <div class="mt-3">
+                  <div class="mt-3" id="seedBlock">
                     <h5 class="text-white">Seed</h5>
                     <div class="input-group input-group-sm">
                       <input
@@ -428,18 +441,18 @@
                         Clear
                       </button>
                     </div>
-                    <button
-                      class="btn btn-warning btn-sm mt-2"
-                      type="button"
-                      id="cotdButton"
-                    >
-                      Roll Challenge of the Day
-                    </button>
                     <small class="text-white-50 d-block mt-1">
                       The same seed with the same options and warbonds produces
-                      the same rolls. Challenge of the Day seeds today's date.
+                      the same rolls.
                     </small>
                   </div>
+                  <button
+                    class="btn btn-warning btn-sm mt-2"
+                    type="button"
+                    id="cotdButton"
+                  >
+                    Roll Challenge of the Day
+                  </button>
                 </div>
               </div>
               <div class="d-flex row" id="eaglesAndOrbitalsOptions">

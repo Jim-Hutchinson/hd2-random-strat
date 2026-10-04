@@ -56,6 +56,8 @@ let checkedWarbonds = new Set(); // Use Set for better performance
 let teamMode = false;
 // Per-player warbond selections (squad mode only; one Set per player)
 let playerWarbonds = [null, null, null, null];
+// Advanced settings mode: hides power-user options unless enabled
+let advancedMode = false;
 // Per-player squad roles (squad mode only): null or a key of ROLES
 let playerRoles = [null, null, null, null];
 // Locked slots: Map<"strat:p:pos" | "equip:p:category" | "armor:p", internalName>
@@ -84,6 +86,30 @@ const getSupplyOptions = () => ({
     document.getElementById("uniqueEquipmentCheck")?.checked &&
     !document.getElementById("uniqueEquipmentCheck")?.disabled,
 });
+
+// Show/hide the power-user options (presets, seed, roles, unique equipment)
+// depending on the "Advanced settings" toggle.
+const updateAdvancedVisibility = () => {
+  advancedMode = !!document.getElementById("advancedSettingsCheck")?.checked;
+
+  ["presetBlock", "seedBlock"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = advancedMode ? "" : "none";
+  });
+
+  const uniqueEquipmentCheck = document.getElementById("uniqueEquipmentCheck");
+  if (uniqueEquipmentCheck) {
+    uniqueEquipmentCheck.closest(".form-check").style.display = advancedMode
+      ? ""
+      : "none";
+  }
+
+  document
+    .querySelectorAll("#loadoutSlots .roleSelect")
+    .forEach((select) => {
+      select.style.display = advancedMode ? "" : "none";
+    });
+};
 
 // The per-player "only one" options only apply in squad mode, so they are
 // disabled while rolling for a single player.
@@ -603,6 +629,8 @@ const buildLoadoutDOM = () => {
     `;
   }
 
+  updateAdvancedVisibility();
+
   // Give the loadout column more room in squad mode
   const column = document.getElementById("loadoutColumn");
   if (column) {
@@ -693,6 +721,17 @@ const initEventListeners = () => {
   const toggleAllButton = document.getElementById("toggleAllWarbonds");
   if (toggleAllButton) {
     toggleAllButton.addEventListener("change", handleToggleAllWarbonds);
+  }
+
+  // Advanced settings toggle
+  const advancedSettingsCheck = document.getElementById(
+    "advancedSettingsCheck",
+  );
+  if (advancedSettingsCheck) {
+    advancedSettingsCheck.addEventListener("change", (e) => {
+      updateLocalStorage(e.target, "advancedOptions");
+      updateAdvancedVisibility();
+    });
   }
 
   // Seed controls
@@ -1994,7 +2033,6 @@ const rerollPlayer = async (playerIndex) => {
       if (item) otherItems.push(item);
     });
   });
-  const usedNames = new Set(otherItems.map((item) => item.internalName));
   const remainingSupports = otherItems.filter(isSupportItem).length;
   const remainingBackpacks = otherItems.filter(isBackpackItem).length;
   const remainingExosuits = otherItems.filter(isExosuitItem).length;
@@ -2130,6 +2168,9 @@ const checkLocalStorageForOptionsPreferences = async () => {
       teamModeOptions: {
         teamModeCheck: false,
       },
+      advancedOptions: {
+        advancedSettingsCheck: false,
+      },
     };
     localStorage.setItem("randomizerOptions", JSON.stringify(defaultOptions));
     await applyStoredOptionsToLists(defaultOptions);
@@ -2157,6 +2198,7 @@ const applyStoredOptionsToLists = async (options) => {
   // Apply squad mode (rebuild the loadout DOM for the right number of players)
   teamMode = !!elements.teamModeCheck?.checked;
   buildLoadoutDOM();
+  updateAdvancedVisibility();
 
   // Rebuild checkedWarbonds set
   checkedWarbonds.clear();
