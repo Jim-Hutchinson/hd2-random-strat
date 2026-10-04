@@ -602,13 +602,17 @@ border 3c434d
 
 /* Squad (4-player) mode */
 .playerBlock {
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  margin-top: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.75rem 0.75rem;
+  margin-bottom: 1rem;
 }
 
-.playerBlock:first-child {
-  border-top: none;
-  margin-top: 0;
+/* Keep nested rows from overhanging the panel border */
+.playerBlock > .row {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .playerHeader {

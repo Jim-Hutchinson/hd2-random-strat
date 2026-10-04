@@ -134,25 +134,32 @@ const buildLoadoutDOM = () => {
       ></div>
     `;
   } else {
-    slots.innerHTML = PLAYER_NAMES.map(
-      (name, playerIndex) => `
-      <div class="playerBlock pb-2">
-        <h5 class="text-white text-center playerHeader my-2">${name}</h5>
-        <div
-          class="armorContainer d-flex row justify-content-start"
-          data-player="${playerIndex}"
-        ></div>
-        <div
-          class="equipmentContainer row pt-2 d-flex justify-content-center"
-          data-player="${playerIndex}"
-        ></div>
-        <div
-          class="stratagemsContainer row pt-2 d-flex justify-content-center"
-          data-player="${playerIndex}"
-        ></div>
+    // 2x2 grid: each player block is half of the widened column, which works
+    // out to exactly the same width as the solo loadout column, so every card
+    // matches the single-player size.
+    slots.innerHTML = `
+      <div class="row justify-content-center">
+        ${PLAYER_NAMES.map(
+          (name, playerIndex) => `
+        <div class="playerBlock col-12 col-lg-6">
+          <h5 class="text-white text-center playerHeader my-2">${name}</h5>
+          <div
+            class="armorContainer d-flex row justify-content-start"
+            data-player="${playerIndex}"
+          ></div>
+          <div
+            class="equipmentContainer row pt-2 d-flex justify-content-center"
+            data-player="${playerIndex}"
+          ></div>
+          <div
+            class="stratagemsContainer row pt-2 d-flex justify-content-center"
+            data-player="${playerIndex}"
+          ></div>
+        </div>
+        `,
+        ).join("")}
       </div>
-    `,
-    ).join("");
+    `;
   }
 
   // Give the loadout column more room in squad mode
